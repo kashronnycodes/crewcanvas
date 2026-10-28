@@ -103,7 +103,8 @@ function PersonNode({ data }: NodeProps<MapNode>) {
       <Handle type="target" position={Position.Top} />
       <Handle type="source" position={Position.Bottom} />
       <button
-        className="person-open nodrag"
+        className="person-open"
+        title="Click to view projects · drag to rearrange"
         aria-label={lead ? "Myron, team lead" : `Open ${p.name}`}
         onClick={() => !lead && data.onSelect(p.id)}
       >
