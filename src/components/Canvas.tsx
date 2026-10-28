@@ -212,6 +212,7 @@ function Map({
   search,
   onNotify,
   onInvite,
+  selectedPersonId,
 }: {
   snapshot: WorkspaceSnapshot;
   onSelect: (id: string, filter?: Filter) => void;
@@ -220,6 +221,7 @@ function Map({
   search: string;
   onNotify: (s: string) => void;
   onInvite: () => void;
+  selectedPersonId?: string;
 }) {
   const [layout, setLayout] = useState(snapshot.layout);
   const [pan, setPan] = useState(false);
@@ -286,6 +288,7 @@ function Map({
       return [
         {
           id: person.id,
+          selected: person.id === selectedPersonId,
           type: "person",
           parentId: position.groupId ?? undefined,
           position: { x: position.x, y: position.y },
@@ -323,6 +326,7 @@ function Map({
     persist,
     search,
     today,
+    selectedPersonId,
   ]);
   const edges = useMemo(() => {
     const employer = snapshot.people.find((p) => p.accessRole === "employer")!;
@@ -345,7 +349,8 @@ function Map({
     ].map((e) => ({
       ...e,
       type: "default",
-      style: { stroke: "#c6ccdb", strokeWidth: 1.5 },
+      zIndex: 0,
+      style: { stroke: "var(--line, #555c59)", strokeWidth: 1.2 },
     }));
   }, [layout, snapshot.people]);
   function changed(changes: NodeChange<MapNode>[]) {
@@ -439,7 +444,7 @@ function Map({
           variant={BackgroundVariant.Dots}
           gap={22}
           size={1.25}
-          color="#d5d7df"
+          color="#303633"
         />
       </ReactFlow>
       <div className="canvas-hint">

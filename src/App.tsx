@@ -393,7 +393,7 @@ export default function App() {
               </div>
               <h1>
                 {employer
-                  ? "Good work starts with good people."
+                  ? "Team workspace"
                   : `Your work, ${actor.name.split(" ")[0]}.`}{" "}
                 <span>✦</span>
               </h1>
@@ -537,6 +537,7 @@ export default function App() {
               search={search}
               onNotify={notify}
               onInvite={() => setInvite(true)}
+              selectedPersonId={selected ?? undefined}
             />
           ) : (
             <div className="people-list">

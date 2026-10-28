@@ -12,6 +12,9 @@
     "check:server": "deno check --config supabase/functions/deno.json supabase/functions/crew-api/index.ts supabase/functions/paypal-webhook/index.ts supabase/functions/reconcile/index.ts"
   },
   "dependencies": {
+    "@fontsource/inter": "5.3.0",
+    "@fontsource/jetbrains-mono": "5.3.0",
+    "@fontsource/newsreader": "5.3.0",
     "@hookform/resolvers": "5.2.2",
     "@radix-ui/react-dialog": "1.1.15",
     "@supabase/supabase-js": "2.80.0",
