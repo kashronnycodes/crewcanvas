@@ -1,0 +1,23 @@
+project_id = "crewcanvas"
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+[db]
+port = 54322
+major_version = 17
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:5173"
+additional_redirect_urls = ["http://127.0.0.1:5173/?invite=1"]
+enable_signup = false
+[functions.crew-api]
+verify_jwt = true
+import_map = './functions/deno.json'
+[functions.paypal-webhook]
+verify_jwt = false
+import_map = './functions/deno.json'
+[functions.reconcile]
+verify_jwt = false
+import_map = './functions/deno.json'
