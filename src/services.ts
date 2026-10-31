@@ -20,12 +20,44 @@ import {
 } from "../shared/validation";
 import { createDemoWorkspace, migrateDemoRoster } from "./demoRoster";
 import { validateCanvas } from "../shared/workspace";
+import { clearExpiredAuth } from "./authSession";
 export const mode = import.meta.env.VITE_APP_MODE === "integrated"
   ? "integrated"
   : "demo";
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 export const supabase = url && key ? createClient(url, key) : null;
+export async function signOutSession() {
+  if (!supabase) return;
+  const { error } = await supabase.auth.signOut({ scope: "local" });
+  if (error?.name === "AuthSessionMissingError") {
+    // A revoked harness/session can leave a cached user after the SDK no longer
+    // has a session to revoke. Clear only this project's stale local credentials.
+    clearExpiredAuth(localStorage, url);
+    window.location.reload();
+  } else if (error) throw error;
+}
+export async function signupAvailable(): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const response = await fetch(`${url}/auth/v1/settings`, {
+      headers: { apikey: key },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) return false;
+    const settings = await response.json();
+    return settings.disable_signup === false;
+  } catch {
+    return false;
+  }
+}
+let activeWorkspaceId: string | null = null;
+export function setActiveWorkspace(id: string | null) {
+  activeWorkspaceId = id;
+}
+export function workspaceHeaders(): Record<string, string> {
+  return activeWorkspaceId ? { "X-Workspace-Id": activeWorkspaceId } : {};
+}
 const storageKey = "crewcanvas.demo.v1";
 let memory: WorkspaceSnapshot | undefined;
 function readDemo(): WorkspaceSnapshot {
@@ -70,6 +102,7 @@ export interface PaymentGateway {
   reconcile(projectId: string): Promise<void>;
 }
 export async function api(path: string, body?: unknown, requestId?: string) {
+  const selectedWorkspaceHeaders = workspaceHeaders();
   if (!supabase) {
     throw new Error(
       "Integrated mode needs a Supabase URL and publishable key. Configure .env and restart.",
@@ -85,6 +118,7 @@ export async function api(path: string, body?: unknown, requestId?: string) {
       Authorization: `Bearer ${session.access_token}`,
       apikey: key,
       "Content-Type": "application/json",
+      ...selectedWorkspaceHeaders,
       ...(requestId ? { "Idempotency-Key": requestId } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),

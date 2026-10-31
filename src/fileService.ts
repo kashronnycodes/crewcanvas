@@ -1,6 +1,13 @@
 import type { WorkspaceFile, WorkspaceSnapshot } from "../shared/types";
 import { MAX_FILE_BYTES, validateFile } from "../shared/workspace";
-import { api, mode, mutateDemo, repository, supabase } from "./services";
+import {
+  api,
+  mode,
+  mutateDemo,
+  repository,
+  supabase,
+  workspaceHeaders,
+} from "./services";
 const dbName = "crewcanvas-binary-v1";
 async function binary<T>(
   operation: (store: IDBObjectStore) => IDBRequest<T>,
@@ -157,6 +164,9 @@ export const files = {
       );
       xhr.timeout = 120000;
       xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
+      for (const [name, value] of Object.entries(workspaceHeaders())) {
+        xhr.setRequestHeader(name, value);
+      }
       xhr.setRequestHeader(
         "apikey",
         import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,

@@ -7,10 +7,12 @@ import {
   makeAgreement,
   uid,
 } from "../../../shared/domain.ts";
-import type { Person, Project } from "../../../shared/types.ts";
+import type { Project } from "../../../shared/types.ts";
 import {
   actor,
   admin,
+  allowedOrigins,
+  authenticatedUser,
   authorizedProject,
   body,
   commit,
@@ -22,7 +24,11 @@ import {
   snapshot,
 } from "../_shared/backend.ts";
 import { compareRevision, extractBrief } from "../_shared/ai.ts";
-import { issueInvoice, reconcileProject } from "../_shared/paypal.ts";
+import {
+  issueInvoice,
+  reconcileProject,
+  verifySandboxCredentials,
+} from "../_shared/paypal.ts";
 import {
   authorizedFile,
   fileUrl,
@@ -31,22 +37,42 @@ import {
 } from "../_shared/files.ts";
 import { validateCanvas } from "../../../shared/workspace.ts";
 import { workspaceCommand } from "../_shared/workspace-ai.ts";
+import { checked, onboarding, tokenHash } from "../_shared/onboarding.ts";
 const idBody = z.object({ projectId: z.uuid() }).strict();
 export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return respond(req, {});
   try {
     const origin = req.headers.get("Origin");
-    if (origin && origin !== env("ALLOWED_ORIGIN")) {
+    if (origin && !allowedOrigins().includes(origin)) {
       throw new HttpError(
         403,
         "FORBIDDEN",
         "This browser origin is not permitted.",
       );
     }
-    const user = await actor(req);
     const path = new URL(req.url).pathname.split("/crew-api/")[1] ?? "";
+    const identity = await authenticatedUser(req);
+    const setup = await onboarding(req, path, identity);
+    if (setup) return setup;
+    const user = await actor(req, identity);
     if (req.method === "GET" && path === "snapshot") {
       return respond(req, await snapshot(user));
+    }
+    if (req.method === "GET" && path === "members") {
+      if (user.role !== "employer") {
+        throw new HttpError(
+          403,
+          "FORBIDDEN",
+          "Only the employer can manage team members.",
+        );
+      }
+      const records = checked(
+        await admin().from("memberships").select("data").eq(
+          "workspace_id",
+          user.workspaceId,
+        ).eq("access_role", "worker"),
+      );
+      return respond(req, (records ?? []).map((row) => row.data));
     }
     if (req.method !== "POST") {
       throw new HttpError(404, "NOT_FOUND", "Endpoint not found.");
@@ -55,6 +81,89 @@ export async function handler(req: Request): Promise<Response> {
       return respond(req, await uploadFile(req, user));
     }
     const input = await body(req);
+    if (path === "payments/verify-configuration") {
+      if (user.role !== "employer") {
+        throw new HttpError(
+          403,
+          "FORBIDDEN",
+          "Only the workspace owner can verify provider configuration.",
+        );
+      }
+      z.object({}).strict().parse(input);
+      return respond(req, await verifySandboxCredentials());
+    }
+    if (path === "members/update") {
+      if (user.role !== "employer") {
+        throw new HttpError(
+          403,
+          "FORBIDDEN",
+          "Only the employer can manage team members.",
+        );
+      }
+      const value = z.object({
+        id: z.uuid(),
+        name: z.string().trim().min(2).max(80),
+        role: z.string().trim().min(2).max(80),
+      }).strict().parse(input);
+      const record = checked(
+        await admin().from("memberships").select("data").eq("id", value.id).eq(
+          "workspace_id",
+          user.workspaceId,
+        ).eq("access_role", "worker").single(),
+      );
+      if (!record) throw new HttpError(404, "NOT_FOUND", "Member not found.");
+      const person = {
+        ...record.data,
+        name: value.name,
+        role: value.role,
+        initials: value.name.split(" ").map((s) => s[0]).slice(0, 2).join(""),
+      };
+      checked(
+        await admin().from("memberships").update({ data: person }).eq(
+          "id",
+          value.id,
+        ).eq("workspace_id", user.workspaceId).eq("access_role", "worker"),
+      );
+      return respond(req, { ok: true });
+    }
+    if (path === "notifications/read") {
+      const { id } = z.object({ id: z.uuid() }).strict().parse(input);
+      checked(
+        await admin().from("notifications").update({
+          read_at: new Date().toISOString(),
+        })
+          .eq("id", id).eq("recipient_id", user.id).eq(
+            "workspace_id",
+            user.workspaceId,
+          ),
+      );
+      return respond(req, { ok: true });
+    }
+    if (path === "workspaces/update") {
+      if (user.role !== "employer") {
+        throw new HttpError(
+          403,
+          "FORBIDDEN",
+          "Only the workspace owner can edit workspace settings.",
+        );
+      }
+      const value = z.object({
+        name: z.string().trim().min(2).max(80),
+        timezone: z.string().max(80),
+      }).strict().parse(input);
+      try {
+        new Intl.DateTimeFormat("en", { timeZone: value.timezone }).format();
+      } catch {
+        throw new HttpError(400, "VALIDATION", "Choose a valid timezone.");
+      }
+      checked(
+        await admin().from("workspaces").update(value).eq(
+          "id",
+          user.workspaceId,
+        ),
+      );
+      return respond(req, { ok: true });
+    }
     if (path === "files/update") {
       return respond(req, await updateFile(input, user));
     }
@@ -197,61 +306,22 @@ export async function handler(req: Request): Promise<Response> {
         })
         .strict()
         .parse(input);
-      const db = admin();
-      const generated = await db.auth.admin.generateLink({
-        type: "invite",
-        email: value.email,
-        options: { redirectTo: `${env("ALLOWED_ORIGIN")}/?invite=1` },
-      });
-      if (generated.error) {
-        throw new HttpError(
-          409,
-          "INVITE_ERROR",
-          "An invitation could not be generated. This email may already have an account; use its existing invitation or ask an administrator.",
-        );
-      }
-      const id = uid();
-      const person: Person = {
-        id,
-        authUserId: generated.data.user.id,
-        name: value.name,
-        role: value.role,
-        accessRole: "worker",
-        email: value.email,
-        initials: value.name
-          .split(" ")
-          .map((s) => s[0])
-          .slice(0, 2)
-          .join(""),
-        color: "#cbd2e8",
-        connected: false,
-      };
-      const membership = await db.from("memberships").insert({
-        id,
-        workspace_id: user.workspaceId,
-        auth_user_id: generated.data.user.id,
-        access_role: "worker",
-        data: person,
-      });
-      if (membership.error) throw membership.error;
-      const layoutRow = await db
-        .from("canvas_layouts")
-        .select("data,version")
-        .eq("workspace_id", user.workspaceId)
-        .single();
-      if (layoutRow.data) {
-        const layout = layoutRow.data.data;
-        layout.people.push({ id, groupId: null, x: 450, y: 650 });
-        const saved = await db.rpc("save_canvas", {
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(32))).map(
+        (n) => n.toString(16).padStart(2, "0"),
+      ).join("");
+      checked(
+        await admin().rpc("invite_workspace_member", {
           p_actor_id: user.id,
-          p_layout: layout,
-          p_expected: layoutRow.data.version,
-        });
-        if (saved.error) {
-          console.error("New member requires canvas reload", saved.error.code);
-        }
-      }
-      return respond(req, { url: generated.data.properties.action_link });
+          p_id: uid(),
+          p_email: value.email,
+          p_name: value.name,
+          p_role: value.role,
+          p_hash: await tokenHash(token),
+        }),
+      );
+      return respond(req, {
+        url: `${origin ?? env("ALLOWED_ORIGIN")}/?join=${token}`,
+      });
     }
     throw new HttpError(404, "NOT_FOUND", "Endpoint not found.");
   } catch (error) {

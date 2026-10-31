@@ -16,11 +16,13 @@
 
 These are not implied by a successful local build or by the demo.
 
-1. Create/link a dedicated CrewCanvas Supabase project. Do not apply migrations
-   to any unrelated existing project.
-2. Apply migrations, run the seed, and verify Myron/Ava sign-ins in separate
-   browser contexts. Workers must have no peer-project access.
-3. Set the OpenAI key in Edge Function secrets; run the 16-case evaluator.
+1. Use the existing verified `tsnwowlyrlxpwwetmxns` project in `ronnybraces`.
+   Seven migrations are applied. Do not create a replacement or modify unrelated projects.
+2. Rehearse owner/freelancer sign-ins in separate browser contexts. API/storage
+   integration and worker/peer isolation passed; full browser rehearsal remains pending.
+3. Gemini is now the verified default provider (`gemini-3.1-flash-lite` with server-only
+   `GEMINI_API_KEY`). Targeted live verification passed. Rehearse the browser flow and run
+   the broader provider-neutral 16-case evaluator before broad public launch.
    Require 16 valid/cited outputs, all four mixed cases split correctly,
    and at least 14 expected classifications.
 4. Configure one sandbox business seller, matching REST app, personal payer,
@@ -32,12 +34,19 @@ These are not implied by a successful local build or by the demo.
 7. Confirm pending and partial payments are not represented as fully paid.
    Treat API timeouts/unknown creation outcomes as unresolved, without a new
    invoice or false success. Verify manual refresh and scheduled retries.
-8. Enable the reconciliation schedule; inspect failures in the function logs
-   and the private inbox. A disabled scheduler is not a complete integration.
+8. The minute reconciliation schedule is enabled and observed returning HTTP 200.
+   Inspect failures in function logs and the private inbox during the actual payment test.
 9. Deploy with VITE_APP_MODE=integrated and correct public Supabase settings.
    Configure allowed origin/auth redirects for the deployed frontend URL.
 10. Rehearse the README demo, record the six-minute video, and retain provider
     invoice/event references as evidence. Reset only browser demo fixtures.
+
+For the conditionally authorized four-person production test, see
+[the current production preflight](production-preflight-2026-11-01.md). The
+owner allows the full manual browser rehearsal after deployment, but the
+confirmed-account/SMTP authentication gate must first be resolved. Existing
+verified Sandbox payment evidence should be reused; no additional paid
+invoice is required for this release.
 
 ## Four-person handoff
 

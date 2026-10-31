@@ -10,8 +10,8 @@ major_version = 17
 [auth]
 enabled = true
 site_url = "http://127.0.0.1:5173"
-additional_redirect_urls = ["http://127.0.0.1:5173/?invite=1"]
-enable_signup = false
+additional_redirect_urls = ["http://127.0.0.1:5173/**", "http://localhost:5173/**", "https://crewcanvas.vercel.app/**"]
+enable_signup = true
 [functions.crew-api]
 verify_jwt = true
 import_map = './functions/deno.json'
