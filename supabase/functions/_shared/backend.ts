@@ -121,12 +121,15 @@ export function errorResponse(req: Request, error: unknown) {
   );
 }
 export async function body(req: Request) {
+  return (await rawJsonBody(req)).value;
+}
+export async function rawJsonBody(req: Request) {
   const text = await req.text();
   if (text.length > 60000) {
     throw new HttpError(413, "TOO_LARGE", "This request is too large.");
   }
   try {
-    return JSON.parse(text);
+    return { text, value: JSON.parse(text) };
   } catch {
     throw new HttpError(400, "VALIDATION", "Send a JSON request body.");
   }

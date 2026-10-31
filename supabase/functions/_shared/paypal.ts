@@ -11,6 +11,10 @@ import {
 } from "../../../shared/paypal-state.ts";
 import type { Invoice, Project, SessionActor } from "../../../shared/types.ts";
 import {
+  serializeWebhookVerification,
+  type webhookVerification,
+} from "../../../shared/webhook-verification.ts";
+import {
   admin,
   authorizedProject,
   commit,
@@ -55,6 +59,26 @@ export async function paypal(
   data?: unknown,
   requestId?: string,
 ): Promise<any> {
+  return paypalRequest(
+    path,
+    data === undefined ? undefined : JSON.stringify(data),
+    requestId,
+  );
+}
+export async function verifyWebhookSignature(
+  payload: NonNullable<ReturnType<typeof webhookVerification>>,
+  rawEvent: string,
+) {
+  return paypalRequest(
+    "/v1/notifications/verify-webhook-signature",
+    serializeWebhookVerification(payload, rawEvent),
+  );
+}
+async function paypalRequest(
+  path: string,
+  data?: string,
+  requestId?: string,
+): Promise<any> {
   const response = await fetch(`${BASE}${path}`, {
     method: data === undefined ? "GET" : "POST",
     signal: AbortSignal.timeout(20000),
@@ -64,7 +88,7 @@ export async function paypal(
       Prefer: "return=representation",
       ...(requestId ? { "PayPal-Request-Id": requestId } : {}),
     },
-    body: data === undefined ? undefined : JSON.stringify(data),
+    body: data,
   });
   const text = await response.text();
   const result = text ? JSON.parse(text) : {};

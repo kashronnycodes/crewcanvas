@@ -1,15 +1,21 @@
 import { z } from "zod";
 import {
   admin,
-  body,
   env,
   errorResponse,
   HttpError,
   providerStore,
+  rawJsonBody,
   respond,
 } from "../_shared/backend.ts";
-import { paypal, processWebhookEvent } from "../_shared/paypal.ts";
-import { webhookVerification } from "../../../shared/webhook-verification.ts";
+import {
+  processWebhookEvent,
+  verifyWebhookSignature,
+} from "../_shared/paypal.ts";
+import {
+  webhookInvoiceId,
+  webhookVerification,
+} from "../../../shared/webhook-verification.ts";
 const eventSchema = z
   .object({
     id: z.string().min(1).max(100),
@@ -22,17 +28,18 @@ export async function handler(req: Request): Promise<Response> {
     return respond(req, { error: { message: "POST required" } }, 405);
   }
   try {
-    const raw = await body(req);
+    const { text: rawText, value: raw } = await rawJsonBody(req);
     const event = eventSchema.parse(raw);
     const payload = webhookVerification(req.headers, "header-check", raw);
     if (!payload) {
-      throw new HttpError(400, "BAD_SIGNATURE", "PayPal signature headers are required.");
+      throw new HttpError(
+        400,
+        "BAD_SIGNATURE",
+        "PayPal signature headers are required.",
+      );
     }
     payload.webhook_id = env("PAYPAL_WEBHOOK_ID");
-    const verification = await paypal(
-      "/v1/notifications/verify-webhook-signature",
-      payload,
-    );
+    const verification = await verifyWebhookSignature(payload, rawText);
     if (verification.verification_status !== "SUCCESS") {
       throw new HttpError(
         400,
@@ -43,7 +50,8 @@ export async function handler(req: Request): Promise<Response> {
     if (!event.event_type.startsWith("INVOICING.INVOICE.")) {
       return respond(req, { ignored: true });
     }
-    if (!event.resource.id?.startsWith("INV2-")) {
+    const invoiceId = webhookInvoiceId(event.resource);
+    if (!invoiceId) {
       throw new HttpError(
         400,
         "INVALID_EVENT",
@@ -64,7 +72,7 @@ export async function handler(req: Request): Promise<Response> {
     const stored = await providerStore("webhook_insert", {
       eventId: event.id,
       sellerConnectionId: connection.data,
-      providerId: event.resource.id,
+      providerId: invoiceId,
       event,
     });
     if (stored.processed_at) return respond(req, { duplicate: true });

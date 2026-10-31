@@ -11,6 +11,7 @@
     "setup:integrated": "node scripts/configure-local.mjs",
     "test:integrated": "node scripts/verify-integrated.mjs",
     "test:paypal-config": "node scripts/verify-paypal-config.mjs",
+    "test:endpoint-security": "node scripts/verify-endpoint-security.mjs",
     "test:ai:prepare": "node scripts/verify-ai.mjs --prepare-only",
     "test:ai": "node scripts/verify-ai.mjs",
     "test:paypal-flow": "node scripts/verify-paypal-flow.mjs",

@@ -14,14 +14,14 @@
 | Area | Implemented / verified | Remaining gate |
 |---|---|---|
 | Account isolation | Separate named credential entry and repo-local CLI state; identity/project guard | Teammates need their own authorized organization membership |
-| Database | Existing relational/JSON contracts retained; six migrations applied | Future schema changes follow reviewed migrations |
+| Database | Existing relational/JSON contracts retained; seven migrations applied | Future schema changes follow reviewed migrations |
 | Auth | Signup, confirmation redirect, password sign-in, persisted sessions, sign-out, membership-based roles | Real inbox delivery and a user's signup confirmation still need a manual rehearsal |
 | Workspaces | Creation, list/selection, persistent layout, settings; one account can have several memberships | Workspace deletion and member removal are intentionally not exposed |
 | Team | Seven-day email-bound invitations, existing/new accounts, member name/creative-role editing | Invitation links are manually shared; no custom email sender |
 | Work | Assigned project agreements, included tasks, delivery/revision/approval cycle | Task cards represent project-level agreed work; independent per-line-item assignees/statuses are not implemented |
 | Files | Private bucket, server-authorized uploads, immutable version history, signed downloads | Large/resumable uploads, virus scanning and Office previews remain out of scope |
 | Activity | Durable project/file/workspace events; recipient-specific unread/read notifications | Fifteen-second polling is used; no Realtime subscription is required |
-| PayPal | Sandbox OAuth verified; synthetic correction/addition/approval passed at USD 1.25; public webhook reachable; minute reconciliation returning HTTP 200 | Registered webhook ID, seller mapping, real Sandbox invoice/payment and signed event round trip |
+| PayPal | Registration/seller mapping verified; real USD 1.25 Sandbox invoice created and paid; signed invoice-created callback processed; minute reconciliation returning HTTP 200 | Paid-event/duplicate redelivery confirmation and final team rehearsal |
 | AI | Responses integration, bounded authorized context and validated IDs; provider failures safely classified | Configured API key reports `credit_balance_exhausted` / `insufficient_quota`; funded API project and live output evaluation needed |
 | Deployment | Integrated local environment and protected Vercel preview; production unchanged | Provider gates, manual UI rehearsal and explicit production approval |
 
@@ -40,6 +40,8 @@
    pg_cron/pg_net job, with encrypted Vault authentication and conflicting configuration refused.
 6. `20261031165542_service_role_auth.sql`: verify effective server database role rather than
    compare different valid opaque API keys; enforce one membership per Sandbox merchant.
+7. `20261031174301_seller_lookup_bootstrap.sql`: return NULL for an absent seller during
+   first-time setup; preserve service-only permissions and rejection of ambiguous mappings.
 
 Migrations were dry-run before application. No existing user data was reset or deleted.
 All 13 public application tables and nine private tables have RLS enabled.
@@ -142,6 +144,9 @@ npm run test:paypal-flow -- --prepare-only
 npm run test:paypal-flow
 # Pay the returned Sandbox URL manually with the separate personal Sandbox account.
 npm run test:paypal-flow -- --verify
+npm run test:endpoint-security
+# Fresh core regression fixtures without replacing the established payment test identity:
+npm run test:integrated -- --preserve-fixtures
 ```
 
 `setup:paypal` checks the registered callback and event list using PayPal's API. `--test-fixture`
@@ -155,7 +160,7 @@ remain under ignored `.supabase/`; they are retained rather than deleted.
 
 ## Verification and limitations
 
-- 80 regression tests pass across 16 files, including executing the full migration chain in PostgreSQL,
+- 89 regression tests pass across 16 files, including executing the full migration chain in PostgreSQL,
   worker/peer isolation, direct-write denial, invitation identity/replay handling, timestamps,
   immutable file evidence, notifications, signup UI, persisted workspace selection, safe provider
   error handling and rejection of missing PayPal transmission signature headers.
@@ -166,18 +171,25 @@ remain under ignored `.supabase/`; they are retained rather than deleted.
   actual private upload/signed download, two file versions, requested revision, revised submission,
   employer approval, notification read persistence, protected evidence and sign-out.
   Employer-only workspace settings and creative-role label editing were also verified without role escalation.
-- The live workflow reloads database snapshots throughout; it is an API/storage integration test,
-  not an authenticated browser end-to-end test. The integrated sign-in page was visually checked.
-  Full authenticated browser rehearsal and real confirmation-email delivery remain manual gates.
+- The live workflow reloads database snapshots throughout; it is an API/storage integration test.
+  A separate actual browser test passed sign-in, workspace creation, session/workspace restoration
+  after reload, saved settings reflected in the canvas, and sign-out. The full two-person workflow
+  has not been replayed entirely through browser clicks; real confirmation-email delivery remains a manual gate.
 - The configured `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` successfully authenticated against the
-  real Sandbox OAuth endpoint. The worker was denied the owner-only configuration check. No invoice
-  or payment was created by this test. The user has configured seller/payer metadata; registration
-  of the matching webhook and `PAYPAL_WEBHOOK_ID` remain pending. The synthetic free correction,
-  USD 0.25 accepted addition, second delivery and final approval passed for a USD 1.25 agreement.
+  real Sandbox OAuth endpoint. The worker was denied the owner-only configuration check. The actual
+  webhook ID/URL/event subscriptions and single synthetic freelancer mapping are verified.
+  The synthetic free correction, USD 0.25 accepted addition, second delivery and final approval
+  passed for a USD 1.25 agreement. A real Sandbox invoice was created, manually paid by the user,
+  and retrieved through PayPal: USD 1.25 settled, zero pending, work still accepted. Repeated
+  retrieval preserved exactly one invoice and one provider transaction record.
 - `paypal-webhook` is ACTIVE with `verify_jwt=false`. Public GET returned 405 and malformed POST
   returned 400 from the handler without any Supabase credentials. Signature verification posts
   the complete event and transmission headers to PayPal, and requires `SUCCESS` before storing it.
   After redeployment, an invoice-shaped unsigned POST returned HTTP 400 `BAD_SIGNATURE`.
+  A genuine signed invoice-created event was received and processed after fixing PayPal's
+  wrapped `resource.invoice.id` shape. Verification now also preserves original event JSON
+  whitespace, escapes and number spelling. Forged signatures fail closed and create no inbox row.
+  All reconciliation/admin paths reject anonymous, publishable-key and normal signed-in callers.
 - One Vault-backed minute reconciliation job is active. Three observed scheduled requests returned
   HTTP 200 without timeout/error. Anonymous and authenticated users cannot read decrypted Vault
   secrets or execute the service authorization/setup RPCs.
@@ -190,19 +202,17 @@ remain under ignored `.supabase/`; they are retained rather than deleted.
 - A fixed 64-token synthetic OpenAI probe reached the provider but returned HTTP 429,
   `credit_balance_exhausted` / `insufficient_quota`. No live model output or quality evaluation
   has passed. Add API credits or replace the server secret with a funded API-project key.
-- A real PayPal Sandbox invoice/payment and genuine signature-verification round trip remain
-  unverified until the webhook ID is configured and the separate Sandbox payer completes payment.
+- All required secret names are present; values and digests were withheld. The production npm
+  dependency audit reports zero vulnerabilities. Retained synthetic evidence stays in ignored `.supabase/`.
 - No PayPal Payouts or multi-seller onboarding is implemented or implied.
 
 ## Remaining release sequence
 
-1. Choose the freelancer membership for the single seller, then run `npm run setup:paypal` with
-   `CREW_SELLER_MEMBERSHIP_ID`, or explicitly use `-- --test-fixture` for the synthetic test account.
-2. Register `https://tsnwowlyrlxpwwetmxns.supabase.co/functions/v1/paypal-webhook` in the matching Sandbox
-   REST app for the Invoicing events listed in README. Use a separate personal Sandbox payer.
-3. Inspect the existing Vault-backed retry schedule, pending webhook errors and function logs.
-4. Fund the OpenAI API project, run synthetic live AI verification and the quality evaluation,
+1. The single seller currently maps to the retained synthetic freelancer. Use that account/workspace
+   for payment rehearsal; moving the merchant to a real teammate requires an explicit reviewed
+   mapping change, not silently overwriting the paid test's history.
+2. Inspect the existing Vault-backed retry schedule, pending webhook errors and function logs.
+3. Fund the OpenAI API project, run synthetic live AI verification and the quality evaluation,
    then rehearse the complete two-user UI workflow on the protected preview.
-5. Create and pay a genuine new Sandbox invoice. Verify signed webhook receipt and GET invoice settlement;
-   retry/deliver duplicates and confirm no duplicate billing or financial records.
-6. Review the pull request and approve the production environment/deployment as the final release step.
+4. Rehearse real email confirmation and the team-facing demo. Review Auth advisor warnings.
+5. Review the pull request and approve the production environment/deployment as the final release step.

@@ -317,7 +317,11 @@ await request(owner, "snapshot", undefined, workspaceId, 401);
 check("signed-out session denied");
 mkdirSync(".supabase", { recursive: true });
 writeFileSync(
-  ".supabase/integration-results.json",
+  // Preserve the established provider fixture: its seller mapping and resumable
+  // invoice must keep referring to the same membership across regression reruns.
+  process.argv.includes("--preserve-fixtures")
+    ? ".supabase/integration-rerun-results.json"
+    : ".supabase/integration-results.json",
   JSON.stringify(
     {
       projectRef: ref,

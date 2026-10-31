@@ -244,4 +244,46 @@ describe.sequential("onboarding, tenant isolation and notifications", () => {
       .rejects.toThrow();
     await db.exec("reset role");
   });
+  it("allows first-time seller setup without permitting duplicate merchant mappings", async () => {
+    await db.exec("set role service_role");
+    expect(
+      (await db.query<{ id: string | null }>(
+        "select public.configured_sandbox_seller('SYNTHETIC-MERCHANT','seller@example.com') as id",
+      )).rows[0].id,
+    ).toBeNull();
+    const id = uid();
+    await db.query("select public.provider_store('configure_seller',$1)", [
+      JSON.stringify({
+        id,
+        workspaceId: ws,
+        workerId: workerMember,
+        merchantId: "SYNTHETIC-MERCHANT",
+        email: "seller@example.com",
+      }),
+    ]);
+    expect(
+      (await db.query<{ id: string }>(
+        "select public.configured_sandbox_seller('SYNTHETIC-MERCHANT','SELLER@example.com') as id",
+      )).rows[0].id,
+    ).toBe(id);
+    await expect(
+      db.query("select public.provider_store('configure_seller',$1)", [
+        JSON.stringify({
+          id: uid(),
+          workspaceId: other,
+          workerId: ownerMember,
+          merchantId: "SYNTHETIC-MERCHANT",
+          email: "another@example.com",
+        }),
+      ]),
+    ).rejects.toThrow();
+    await asUser(worker);
+    await expect(
+      db.query(
+        "select public.configured_sandbox_seller('SYNTHETIC-MERCHANT','seller@example.com')",
+      ),
+    )
+      .rejects.toThrow();
+    await db.exec("reset role");
+  });
 });

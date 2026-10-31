@@ -6,6 +6,7 @@ import {
   body,
   env,
   HttpError,
+  loadProject,
   providerStore,
   respond,
 } from "./backend.ts";
@@ -91,7 +92,11 @@ export async function serviceOperation(req: Request): Promise<Response | null> {
       p_email: email,
     });
     if (configured.error) {
-      throw new HttpError(503, "SELLER_CONFIG", "Could not verify the existing seller mapping.");
+      throw new HttpError(
+        503,
+        "SELLER_CONFIG",
+        "Could not verify the existing seller mapping.",
+      );
     }
     if (configured.data && configured.data !== prior?.id) {
       throw new HttpError(
@@ -149,6 +154,113 @@ export async function serviceOperation(req: Request): Promise<Response | null> {
       urlMatches: true,
       eventTypesMatch: true,
       environment: "sandbox",
+    });
+  }
+  if (path === "webhook-events") {
+    const input = z.object({
+      projectId: z.uuid(),
+      resendEventId: z.string().regex(/^WH-[A-Za-z0-9-]+$/).optional(),
+    }).strict().parse(await body(req));
+    const project = await loadProject(input.projectId);
+    if (
+      project.origin !== "sandbox" ||
+      project.title !== "Synthetic Sandbox paid revision"
+    ) {
+      throw new HttpError(
+        403,
+        "FORBIDDEN",
+        "This diagnostic is restricted to the synthetic Sandbox payment fixture.",
+      );
+    }
+    const ids = new Set(project.invoices.map((invoice) => invoice.providerId));
+    const matching: {
+      id: string;
+      eventType: string;
+      status: string | null;
+      invoiceIdField: string;
+      resourceIdKind: string;
+      eventBytes: number;
+      transmissions: { status: string | null; httpStatus: number | null }[];
+    }[] = [];
+    const safeStatus = (value: unknown) =>
+      typeof value === "string" && /^[A-Z_]{1,24}$/.test(value) ? value : null;
+    const start = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      .replace(/\.\d{3}Z$/, "Z");
+    const end = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+    let eventPath = `/v1/notifications/webhooks-events?${new URLSearchParams({
+      start_time: start,
+      end_time: end,
+      page_size: "20",
+    })}`;
+    for (let page = 1; page <= 5; page++) {
+      const list = await paypal(eventPath);
+      for (const event of list.events ?? []) {
+        const invoiceId = event.resource?.id ?? event.resource?.invoice?.id;
+        if (ids.has(invoiceId)) {
+          const detail = await paypal(
+            `/v1/notifications/webhooks-events/${encodeURIComponent(event.id)}`,
+          );
+          matching.push({
+            id: event.id,
+            eventType: event.event_type,
+            status: safeStatus(
+              detail.status ?? event.status ?? event.event_status,
+            ),
+            invoiceIdField: event.resource?.id
+              ? "resource.id"
+              : "resource.invoice.id",
+            resourceIdKind: event.resource?.id === null
+              ? "null"
+              : typeof event.resource?.id,
+            eventBytes: new TextEncoder().encode(JSON.stringify(event)).length,
+            transmissions: (detail.transmissions ?? []).slice(-10).map((
+              t: { status?: unknown; http_status?: unknown },
+            ) => ({
+              status: safeStatus(t.status),
+              httpStatus: typeof t.http_status === "number"
+                ? t.http_status
+                : null,
+            })),
+          });
+        }
+      }
+      const next = (list.links ?? []).find((link: { rel: string }) =>
+        link.rel === "next"
+      );
+      if (!next) break;
+      const nextUrl = new URL(next.href);
+      if (
+        !["https://api-m.sandbox.paypal.com", "https://api.sandbox.paypal.com"]
+          .includes(nextUrl.origin) ||
+        nextUrl.pathname !== "/v1/notifications/webhooks-events"
+      ) {
+        throw new HttpError(
+          502,
+          "PAYPAL_ERROR",
+          "Unexpected event pagination destination.",
+        );
+      }
+      eventPath = nextUrl.pathname + nextUrl.search;
+    }
+    if (input.resendEventId) {
+      if (!matching.some((event) => event.id === input.resendEventId)) {
+        throw new HttpError(
+          400,
+          "INVALID_EVENT",
+          "Only a genuine event for this synthetic invoice can be redelivered.",
+        );
+      }
+      await paypal(
+        `/v1/notifications/webhooks-events/${
+          encodeURIComponent(input.resendEventId)
+        }/resend`,
+        { webhook_ids: [env("PAYPAL_WEBHOOK_ID")] },
+      );
+    }
+    return respond(req, {
+      environment: "sandbox",
+      events: matching,
+      redeliveryRequested: !!input.resendEventId,
     });
   }
   throw new HttpError(404, "NOT_FOUND", "Service operation not found.");

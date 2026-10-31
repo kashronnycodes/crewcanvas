@@ -17,7 +17,7 @@
 These are not implied by a successful local build or by the demo.
 
 1. Use the existing verified `tsnwowlyrlxpwwetmxns` project in `ronnybraces`.
-   Six migrations are applied. Do not create a replacement or modify unrelated projects.
+   Seven migrations are applied. Do not create a replacement or modify unrelated projects.
 2. Rehearse owner/freelancer sign-ins in separate browser contexts. API/storage
    integration and worker/peer isolation passed; full browser rehearsal remains pending.
 3. Fund the configured OpenAI API project (the current key reports insufficient quota),

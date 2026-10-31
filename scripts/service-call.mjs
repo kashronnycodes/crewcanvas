@@ -1,6 +1,6 @@
 import { projectClient, projectUrl } from "./project-client.mjs";
 export async function serviceCall(operation, body = {}) {
-  if (!["ai-probe", "configure-seller", "webhook-check"].includes(operation)) {
+  if (!["ai-probe", "configure-seller", "webhook-check", "webhook-events"].includes(operation)) {
     throw new Error("Unsupported administrative operation.");
   }
   const { serviceKey } = projectClient();
