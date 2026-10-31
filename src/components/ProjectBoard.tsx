@@ -42,6 +42,7 @@ import {
   type BoardData,
   boardDataSchema,
   type BoardEdit,
+  boardGeometryWrite,
   type BoardObject,
   historyTarget,
   mergeBoardRows,
@@ -58,6 +59,7 @@ type BoardNode = Node<
   {
     row: BoardObject;
     onEdit: (id: string) => void;
+    onGeometryStart: (row: BoardObject) => void;
     onResize: (
       id: string,
       width: number,
@@ -90,6 +92,7 @@ const ObjectNode = memo(
           minHeight={40}
           maxWidth={3000}
           maxHeight={3000}
+          onResizeStart={() => data.onGeometryStart(row)}
           onResizeEnd={(_, p) =>
             data.onResize(row.id, p.width, p.height, p.x, p.y)}
         />
@@ -376,10 +379,14 @@ function Board(
     x: number,
     y: number,
   ) => {
-    const row = latest.current.find((row) => row.id === id);
+    const row = geometryBases.current.get(id);
     if (row) {
-      void save(id, { ...row.data, width, height, x, y }, row.version).finally(
-        () => setMoving(null),
+      const write = boardGeometryWrite(row, { width, height, x, y });
+      void save(write.id, write.data, write.expected).finally(
+        () => {
+          geometryBases.current.delete(id);
+          setMoving(null);
+        },
       );
     }
   };
@@ -399,6 +406,7 @@ function Board(
             row,
             onEdit: edit,
             onResize: resize,
+            onGeometryStart: (row) => geometryBases.current.set(row.id, row),
             file: s.files?.find((file) =>
               file.id === row.data.fileId && file.projectId === projectId
             ),
@@ -408,6 +416,7 @@ function Board(
     [rows, selected, s.files],
   );
   const [moving, setMoving] = useState<BoardNode[] | null>(null);
+  const geometryBases = useRef(new Map<string, BoardObject>());
   const edges = rows.filter((row) =>
     !row.deleted && row.data.kind === "connector" && nodes.some((n) =>
       n.id === row.data.source
@@ -601,13 +610,13 @@ function Board(
           )
         ) return;
         const changed = moving.filter((node) => {
-          const row = latest.current.find((row) => row.id === node.id);
-          return row &&
+          const row = node.data.row;
+          return selected.includes(node.id) &&
             (row.data.x !== node.position.x || row.data.y !== node.position.y);
         });
         void Promise.all(changed.map((node) => {
-          const row = latest.current.find((row) => row.id === node.id)!;
-          return save(row.id, { ...row.data, ...node.position }, row.version);
+          const write = boardGeometryWrite(node.data.row, node.position);
+          return save(write.id, write.data, write.expected);
         })).finally(() => setMoving(null));
       }}
       onCopy={(e) => {
@@ -742,14 +751,22 @@ function Board(
             }
           }
         }}
+        onNodeDragStart={(_, __, dragged) => {
+          for (const node of dragged) {
+            geometryBases.current.set(
+              node.id,
+              node.data.row,
+            );
+          }
+        }}
         onNodeDragStop={async (_, __, dragged) => {
           const writes = dragged.map((node) => {
-            const row = latest.current.find((r) => r.id === node.id);
-            return row
-              ? save(row.id, { ...row.data, ...node.position }, row.version)
-              : Promise.resolve(null);
+            const row = geometryBases.current.get(node.id) ?? node.data.row;
+            const write = boardGeometryWrite(row, node.position);
+            return save(write.id, write.data, write.expected);
           });
           await Promise.all(writes);
+          for (const node of dragged) geometryBases.current.delete(node.id);
           setMoving(null);
         }}
         onNodeClick={(event, node) => {

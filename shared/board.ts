@@ -81,6 +81,20 @@ export interface BoardEdit {
   after: BoardData | null;
   version: number;
 }
+// Geometry is authored against the object the gesture started from. Never
+// silently rebase it onto a newer remote row when the gesture ends.
+export function boardGeometryWrite(
+  base: BoardObject,
+  geometry:
+    & Pick<BoardData, "x" | "y">
+    & Partial<Pick<BoardData, "width" | "height">>,
+) {
+  return {
+    id: base.id,
+    data: { ...base.data, ...geometry },
+    expected: base.version,
+  };
+}
 // History contains only whiteboard data. It cannot contain a domain command.
 export function historyTarget(edit: BoardEdit, undo: boolean) {
   return undo ? edit.before : edit.after;

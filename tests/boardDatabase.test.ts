@@ -6,6 +6,8 @@ import { IDS, seedWorkspace } from "../shared/seed";
 import { uid } from "../shared/domain";
 import {
   boardDataSchema,
+  boardGeometryWrite,
+  type BoardObject,
   historyTarget,
   mergeBoardRows,
   newBoardData,
@@ -132,6 +134,38 @@ describe.sequential("project whiteboard authorization, persistence and conflicts
       "Client idea",
       "Freelancer draft",
     ]);
+  });
+  it("rejects movement that started before a collaborator moved the same object", async () => {
+    await actor(0);
+    const id = uid();
+    const result = await db.query<BoardObject>(
+      "insert into public.board_objects(id,project_id,data) values($1,$2,$3) returning *",
+      [id, seed.projects[0].id, JSON.stringify(newBoardData("note", 10, 20))],
+    );
+    const gestureBase = result.rows[0];
+    await actor(1);
+    await db.query(
+      "update public.board_objects set version=2,data=jsonb_set(data,'{x}','500') where id=$1",
+      [id],
+    );
+    await actor(0);
+    const write = boardGeometryWrite(gestureBase, { x: 100, y: 200 });
+    const stale = await db.query(
+      "update public.board_objects set data=$2,version=$3 where id=$1 and version=$4 returning id",
+      [
+        write.id,
+        JSON.stringify(write.data),
+        write.expected + 1,
+        write.expected,
+      ],
+    );
+    expect(stale.rows).toHaveLength(0);
+    expect(
+      (await db.query(
+        "select data->>'x' as x,version from public.board_objects where id=$1",
+        [id],
+      )).rows,
+    ).toEqual([{ x: "500", version: 2 }]);
   });
   it("validates drawings, dimensions, links and object schemas at the database boundary", async () => {
     await actor(1);
@@ -276,6 +310,34 @@ describe.sequential("project whiteboard authorization, persistence and conflicts
   });
 });
 describe("whiteboard contracts", () => {
+  it("preserves the captured version for a resized object even after newer rows arrive", () => {
+    const row: BoardObject = {
+      id: uid(),
+      project_id: uid(),
+      author_id: uid(),
+      updated_by: uid(),
+      data: newBoardData("rectangle", 10, 20),
+      version: 3,
+      deleted: false,
+      updated_at: "now",
+    };
+    const newer = {
+      ...row,
+      version: 4,
+      data: { ...row.data, text: "Collaborator edit" },
+    };
+    const current = mergeBoardRows([row], [newer]);
+    const write = boardGeometryWrite(row, {
+      x: 10,
+      y: 20,
+      width: 500,
+      height: 300,
+    });
+    expect(current[0].version).toBe(4);
+    expect(write.expected).toBe(3);
+    expect(write.data.width).toBe(500);
+    expect(write.data.text).not.toBe("Collaborator edit");
+  });
   it("rejects unknown executable content and merges only newer object versions", () => {
     expect(
       boardDataSchema.safeParse({ ...newBoardData("note"), command: "pay" })
