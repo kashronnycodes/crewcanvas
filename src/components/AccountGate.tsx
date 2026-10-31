@@ -2,7 +2,13 @@ import { type ReactNode, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import type { Person } from "../../shared/types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, setActiveWorkspace, supabase } from "../services";
+import {
+  api,
+  setActiveWorkspace,
+  signOutSession,
+  signupAvailable,
+  supabase,
+} from "../services";
 
 interface Membership {
   id: string;
@@ -37,12 +43,23 @@ export default function AccountGate(
       Intl.DateTimeFormat().resolvedOptions().timeZone
     );
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
+  const [registration, setRegistration] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void signupAvailable().then((allowed) => {
+      if (alive) setRegistration(allowed);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
   useEffect(() => {
     if (!supabase) {
       setReady(true);
       return;
     }
     let alive = true;
+    const deferred = new Set<ReturnType<typeof setTimeout>>();
     let identity: string | null = null;
     function sessionChanged(next: User | null) {
       if (identity !== next?.id) {
@@ -62,17 +79,25 @@ export default function AccountGate(
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        sessionChanged(session?.user ?? null);
-        if (!session) {
-          setActiveWorkspace(null);
-          setWorkspace(null);
-          cache.removeQueries({ queryKey: ["workspace"] });
-          cache.removeQueries({ queryKey: ["memberships"] });
-        }
+        // Queries started by React must run after Supabase releases its Auth
+        // event lock; otherwise their getSession() can block sign-out/refresh.
+        const timer = setTimeout(() => {
+          deferred.delete(timer);
+          if (!alive) return;
+          sessionChanged(session?.user ?? null);
+          if (!session) {
+            setActiveWorkspace(null);
+            setWorkspace(null);
+            cache.removeQueries({ queryKey: ["workspace"] });
+            cache.removeQueries({ queryKey: ["memberships"] });
+          }
+        }, 0);
+        deferred.add(timer);
       },
     );
     return () => {
       alive = false;
+      for (const timer of deferred) clearTimeout(timer);
       subscription.unsubscribe();
     };
   }, [cache]);
@@ -189,19 +214,28 @@ export default function AccountGate(
                     <button className="button primary" disabled={busy}>
                       {signup ? "Create account" : "Sign in"}
                     </button>
-                    <button
-                      className="button secondary"
-                      type="button"
-                      onClick={() => {
-                        setSignup(!signup);
-                        setNotice("");
-                        setError("");
-                      }}
-                    >
-                      {signup
-                        ? "I already have an account"
-                        : "Create a new account"}
-                    </button>
+                    {registration && (
+                      <button
+                        className="button secondary"
+                        type="button"
+                        onClick={() => {
+                          setSignup(!signup);
+                          setNotice("");
+                          setError("");
+                        }}
+                      >
+                        {signup
+                          ? "I already have an account"
+                          : "Create a new account"}
+                      </button>
+                    )}
+                    {!registration && (
+                      <p className="fine-print">
+                        Team testing is invite-only. Use your confirmed
+                        CrewCanvas account, or ask the workspace owner to
+                        arrange access.
+                      </p>
+                    )}
                   </form>
                 )}
             </>
@@ -331,7 +365,7 @@ export default function AccountGate(
               <button
                 className="button secondary"
                 disabled={busy}
-                onClick={() => void supabase?.auth.signOut()}
+                onClick={() => void action(signOutSession)}
               >
                 Sign out
               </button>

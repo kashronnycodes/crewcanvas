@@ -8,9 +8,12 @@ const mocks = vi.hoisted(() => ({
   signOut: vi.fn(),
   api: vi.fn(),
   setActive: vi.fn(),
+  signupAvailable: vi.fn(),
   changed: undefined as undefined | ((event: string, session: unknown) => void),
 }));
 vi.mock("../src/services", () => ({
+  signupAvailable: mocks.signupAvailable,
+  signOutSession: async () => mocks.signOut(),
   api: mocks.api,
   setActiveWorkspace: mocks.setActive,
   supabase: {
@@ -30,6 +33,7 @@ import AccountGate from "../src/components/AccountGate";
 let query: QueryClient;
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.signupAvailable.mockResolvedValue(true);
   sessionStorage.clear();
   window.history.replaceState({}, "", "/");
   mocks.getSession.mockResolvedValue({ data: { session: null }, error: null });
@@ -50,6 +54,14 @@ function show() {
   );
 }
 describe("integrated account onboarding", () => {
+  it("keeps sign-in available while hosted public registration is disabled", async () => {
+    mocks.signupAvailable.mockResolvedValue(false);
+    show();
+    await screen.findByRole("button", { name: "Sign in" });
+    await screen.findByText(/Team testing is invite-only/);
+    expect(screen.queryByRole("button", { name: "Create a new account" }))
+      .toBeNull();
+  });
   it("shows sign-in and surfaces real authentication errors", async () => {
     mocks.signIn.mockResolvedValue({ error: new Error("Invalid credentials") });
     show();

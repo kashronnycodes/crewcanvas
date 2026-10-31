@@ -1,6 +1,13 @@
 import InvitationSetup from "./components/InvitationSetup";
 import AccountGate from "./components/AccountGate";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -17,11 +24,14 @@ import {
   List,
   LoaderCircle,
   LogOut,
+  Moon,
+  PenTool,
   Plus,
   RotateCcw,
   Search,
   Settings2,
   Sparkles,
+  Sun,
   UserPlus,
   Users,
   X,
@@ -38,14 +48,19 @@ import {
   repository,
   resetDemo,
   setDemoActor,
+  signOutSession,
   supabase,
 } from "./services";
 import Avatar from "./components/Avatar";
-import Canvas, { StatusBadges } from "./components/Canvas";
 import Modal from "./components/Modal";
 import ProjectDrawer from "./components/ProjectDrawer";
 import ProjectForm from "./components/ProjectForm";
 import { LayoutSaveQueue } from "./layoutQueue";
+import { useTheme } from "./theme";
+import FocusCanvas from "./components/FocusCanvas";
+import ProjectIndex from "./components/ProjectIndex";
+const Canvas = lazy(() => import("./components/Canvas"));
+const ProjectBoard = lazy(() => import("./components/ProjectBoard"));
 type Filter = "all" | "attention" | "completed";
 export default function App() {
   return mode === "integrated"
@@ -73,7 +88,8 @@ function WorkspaceApp(
 
   const authReady = true;
   const [actorId, setActorId] = useState(IDS.myron as string);
-  const [view, setView] = useState<"canvas" | "list">(() =>
+  const [theme, toggleTheme] = useTheme();
+  const [view, setView] = useState<"canvas" | "list" | "board">(() =>
     window.innerWidth < 768 ? "list" : "canvas"
   );
   const [search, setSearch] = useState("");
@@ -107,6 +123,7 @@ function WorkspaceApp(
   const notify = useCallback((message: string) => setToast(message), []);
   const onSelect = useCallback(
     (id: string, nextFilter: Filter = "all", projectId?: string) => {
+      document.dispatchEvent(new Event("crewcanvas:exit-focus"));
       setSelected(id);
       setFilter(nextFilter);
       setSelectedProjectId(projectId);
@@ -191,7 +208,8 @@ function WorkspaceApp(
               {mode === "integrated" && (
                 <button
                   className="button secondary"
-                  onClick={() => void supabase?.auth.signOut()}
+                  onClick={() =>
+                    void signOutSession().catch((e) => notify(e.message))}
                 >
                   Sign out
                 </button>
@@ -252,9 +270,18 @@ function WorkspaceApp(
           <ChevronDown size={13} />
         </button>
         <div className="topbar-center">
-          <span className="live-dot" /> A little clarity for your creative world
+          Organize. Create. Deliver. Get paid.
         </div>
         <div className="topbar-right">
+          <button
+            className="icon-button"
+            aria-label={`Switch to ${
+              theme === "light" ? "dark" : "light"
+            } mode`}
+            onClick={toggleTheme}
+          >
+            {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+          </button>
           <button
             className="icon-button help-button"
             aria-label="About CrewCanvas"
@@ -270,11 +297,9 @@ function WorkspaceApp(
                 setInbox(true);
                 return;
               }
-              const p = snapshot.projects.find((p) =>
-                p.invoices.some(
-                  (i) => i.state !== "paid" && i.paidMinor !== i.amountMinor,
-                )
-              );
+              const p = snapshot.projects.find((p) => p.invoices.some(
+                (i) => i.state !== "paid" && i.paidMinor !== i.amountMinor,
+              ));
               if (p) onSelect(p.workerId, "attention");
               else notify("You’re all caught up.");
             }}
@@ -342,7 +367,10 @@ function WorkspaceApp(
             </div>
           )
           : (
-            <button onClick={() => void supabase?.auth.signOut()}>
+            <button
+              onClick={() =>
+                void signOutSession().catch((e) => notify(e.message))}
+            >
               <LogOut size={13} />
               Sign out
             </button>
@@ -411,8 +439,8 @@ function WorkspaceApp(
               </div>
               <h1>
                 {employer
-                  ? "Team workspace"
-                  : `Your work, ${actor.name.split(" ")[0]}.`} <span>✦</span>
+                  ? "People. Projects. Possibilities."
+                  : `Your work, ${actor.name.split(" ")[0]}.`}
               </h1>
               <p>
                 {employer
@@ -520,15 +548,25 @@ function WorkspaceApp(
                 disabled={!employer}
               >
                 <LayoutGrid size={15} />
-                Canvas
+                Work map
               </button>
               <button
-                aria-pressed={view === "list" || !employer}
-                className={view === "list" || !employer ? "selected" : ""}
+                aria-pressed={view !== "board" &&
+                  (view === "list" || !employer)}
+                className={view !== "board" && (view === "list" || !employer)
+                  ? "selected"
+                  : ""}
                 onClick={() => setView("list")}
               >
                 <List size={16} />
-                List
+                Projects
+              </button>
+              <button
+                aria-pressed={view === "board"}
+                className={view === "board" ? "selected" : ""}
+                onClick={() => setView("board")}
+              >
+                <PenTool size={15} /> Project whiteboard
               </button>
             </div>
             <span className="canvas-nav-label">
@@ -545,89 +583,46 @@ function WorkspaceApp(
               <kbd>/</kbd>
             </div>
           </div>
-          {employer && view === "canvas"
-            ? (
-              <Canvas
-                snapshot={snapshot}
-                onSelect={onSelect}
-                onSave={saveLayout}
-                saveStatus={saveStatus}
-                search={search}
-                onNotify={notify}
-                onInvite={() => setInvite(true)}
-                selectedPersonId={selected ?? undefined}
-              />
-            )
-            : (
-              <div className="people-list">
-                <div className="list-heading">
-                  <h2>
-                    {employer
-                      ? "The people making it happen"
-                      : "Your project space"}
-                  </h2>
-                  <span>
-                    {filteredWorkers.length} {employer ? "members" : "member"}
-                  </span>
-                </div>
-                <div className="people-grid">
-                  {filteredWorkers.map((p) => (
-                    <div className="person-card" key={p.id}>
-                      <button
-                        className="person-card-main"
-                        onClick={() =>
-                          onSelect(p.id)}
-                      >
-                        <Avatar person={p} size={60} />
-                        <div>
-                          <h3>{p.name}</h3>
-                          <p>{p.role}</p>
-                        </div>
-                        <ArrowUpRight size={18} />
-                      </button>
-                      <div className="card-projects">
-                        {snapshot.projects
-                          .filter((project) =>
-                            project.workerId === p.id
-                          )
-                          .map((project) => (
-                            <button
-                              key={project.id}
-                              onClick={() => onSelect(p.id, "all", project.id)}
-                            >
-                              <span
-                                className={`project-dot state-${project.state}`}
-                              />
-                              {project.title}
-                              <ArrowRight size={12} />
-                            </button>
-                          ))}
-                      </div>
-                      <div className="person-card-footer">
-                        <span>
-                          {snapshot.projects.filter(
-                            (project) => project.workerId === p.id,
-                          ).length} projects
-                        </span>
-                        <StatusBadges
-                          projects={snapshot.projects}
-                          workerIds={[p.id]}
-                          today={today}
-                          onClick={(filter) => onSelect(p.id, filter)}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {!filteredWorkers.length && (
-                  <div className="empty-state">
-                    <Search size={30} />
-                    <h3>No people or projects found</h3>
-                    <p>Try a name, role, or project title.</p>
-                  </div>
-                )}
+          <Suspense
+            fallback={
+              <div className="empty-state" role="status">
+                Opening your visual workspace…
               </div>
-            )}
+            }
+          >
+            {view === "board"
+              ? (
+                <ProjectBoard
+                  snapshot={snapshot}
+                  onOpen={onSelect}
+                  notify={notify}
+                />
+              )
+              : employer && view === "canvas"
+              ? (
+                <FocusCanvas>
+                  <Canvas
+                    snapshot={snapshot}
+                    onSelect={onSelect}
+                    onSave={saveLayout}
+                    saveStatus={saveStatus}
+                    search={search}
+                    onNotify={notify}
+                    onInvite={() => setInvite(true)}
+                    selectedPersonId={selected ?? undefined}
+                  />
+                </FocusCanvas>
+              )
+              : (
+                <div className="people-list">
+                  <ProjectIndex
+                    snapshot={snapshot}
+                    search={search}
+                    onOpen={onSelect}
+                  />
+                </div>
+              )}
+          </Suspense>
           <footer className="workspace-footer">
             <span>
               <span className="footer-spark">✦</span>{" "}

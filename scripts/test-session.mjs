@@ -74,6 +74,7 @@ export async function testSession(index = 0) {
       }
       return data;
     },
-    close: () => client.auth.signOut(),
+    // End only this harness session; do not revoke a parallel browser rehearsal.
+    close: () => client.auth.signOut({ scope: "local" }),
   };
 }

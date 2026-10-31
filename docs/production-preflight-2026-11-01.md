@@ -35,6 +35,15 @@ browser rehearsal may follow deployment for the four-person hackathon team.
 
 ## Deployment gate
 
+**Resolved for the limited team test:** the owner subsequently approved
+disabling public signup and setting the Auth site URL to production. These
+two changes are applied; email confirmation remains enabled, existing
+confirmed test sign-ins work, and the configuration diff is empty. The owner
+will provide the four teammate email addresses tomorrow. See
+[the freelancer-first milestone report](studio-milestone-1.md) for updated
+implementation and verification evidence. The original finding below remains
+relevant before public signup is re-enabled.
+
 Email confirmations are enabled but Custom SMTP is disabled, as confirmed in
 the hosted CrewCanvas Auth settings. Supabase's default sender only supports
 organization-member addresses. New teammates may therefore be unable to

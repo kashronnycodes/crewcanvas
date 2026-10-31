@@ -15,6 +15,7 @@
     "test:ai:prepare": "node scripts/verify-ai.mjs --prepare-only",
     "test:ai": "node scripts/verify-ai.mjs",
     "test:ai:preview": "node scripts/verify-ai-preview.mjs",
+    "test:board": "node scripts/verify-board.mjs",
     "test:paypal-flow": "node scripts/verify-paypal-flow.mjs",
     "setup:reconcile": "node scripts/configure-reconciliation.mjs",
     "setup:paypal": "node scripts/setup-paypal.mjs",
