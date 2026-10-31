@@ -18,7 +18,7 @@ No Vercel production frontend deployment or merge to `main` was performed.
 | OpenAI generation | BLOCKED / failed live call | Real synthetic brief extraction returned insufficient API quota. Prior fixed diagnostic identified `credit_balance_exhausted` / `insufficient_quota`. No successful live summary or quality evaluation is claimed. User deferred AI retry. |
 | PayPal invoice | PASS | Real approved USD 1.25 Sandbox invoice created, retrieved unpaid, then manually paid by the separate personal Sandbox payer. |
 | PayPal payment verification | PASS | Trusted GET/reconciliation reports paid, USD 1.25 settled, zero pending, work still accepted. Repeated retrieval retains exactly one invoice and one transaction record. No browser-success flag or simulated payment was used. |
-| Genuine webhook | PASS for invoice-created event; paid/duplicate delivery pending | Actual PayPal event passed signature verification and was durably stored/processed. PayPal accepted paid-event and duplicate redelivery requests, but receipt has not yet been observed. The inspected Supabase logs show no new callback request after those resends. Do not infer their completion from the payment API result. |
+| Genuine webhook | PASS for invoice-created and invoice-paid events | The user's paid-event resend reached the deployed parsing fix and returned HTTP 200 at 02:20:31 Manila time. Both genuine events passed signature verification and were durably processed. There is one paid-event row, one invoice and one unique transaction record after repeated GET reconciliation and the paid callback. A repeat of the identical callback has not separately been observed. |
 | Public endpoint security | PASS | Five reconcile/admin routes each rejected anonymous, public-key and normal signed-in app callers. Malformed/unsigned webhooks rejected; forged signature failed closed through the actual PayPal verification API, with no forged inbox row. |
 | Scheduler | PASS | One active minute job; recent scheduled requests returned HTTP 200, no timeout/error. Anonymous/app users cannot read decrypted Vault secrets. |
 | Automated checks | PASS | 89 tests / 16 files; frontend TypeScript + Vite build; all three Edge Function type checks; 13 live core integration groups; eight live endpoint-security groups. Production npm audit: zero vulnerabilities. |
@@ -57,10 +57,9 @@ request redelivery only of genuine PayPal events belonging to that invoice.
 - Fund the OpenAI API project or replace its server secret with a funded API-project key;
   then rerun synthetic AI verification and the live quality evaluator. No key belongs in chat,
   browser configuration or Git.
-- Confirm the paid-event and duplicate redelivery status in PayPal's Sandbox Webhooks Events
-  dashboard, then inspect the durable inbox. Genuine signature verification passed for the
-  invoice-created event; the separate invoice-paid delivery and real duplicate round trip
-  remain unconfirmed. The scheduled GET reconciliation already verifies the settled payment.
+- The paid-event callback is now confirmed. An optional repeat of the identical callback can
+  complete the remaining transport-level duplicate rehearsal; payment idempotence across
+  repeated provider GET reconciliation and genuine paid-event processing already passed.
 - Hosted Auth leaked-password protection is disabled. Review availability and enable it
   before public rollout: [Supabase remediation](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
 - The advisor flags managed `pg_net` extension metadata in `public`. Hosted metadata confirms
@@ -74,6 +73,17 @@ request redelivery only of genuine PayPal events belonging to that invoice.
 - Review the integration PR and obtain explicit approval before merging/deploying production.
 
 ## Reproducible checks and retained evidence
+
+Follow-up after the user's failed-event resend: Supabase identifies the caller as
+`PayPal/AUHD-1.0-1` and reports HTTP 200 with 4,841 ms execution time. The paid event was
+received at 02:20:27 and processed at 02:20:31 on 1 November 2026 (Asia/Manila), with no
+stored processing error. The prior nested invoice-ID parsing fix was already deployed;
+no additional backend deployment or relaxation of signature verification was needed.
+Rechecking the actual provider invoice still returns USD 1.25 fully settled, zero pending.
+The 22 focused invoice/signature tests, all three server type checks and all eight live
+endpoint-security groups passed again. The historical failure response body was not retained
+in the available logs; the earlier direct-only ID guard rejects the genuine wrapped resource,
+and the current handler successfully processes it.
 
 ```powershell
 npm test

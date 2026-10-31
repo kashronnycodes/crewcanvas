@@ -21,7 +21,7 @@
 | Work | Assigned project agreements, included tasks, delivery/revision/approval cycle | Task cards represent project-level agreed work; independent per-line-item assignees/statuses are not implemented |
 | Files | Private bucket, server-authorized uploads, immutable version history, signed downloads | Large/resumable uploads, virus scanning and Office previews remain out of scope |
 | Activity | Durable project/file/workspace events; recipient-specific unread/read notifications | Fifteen-second polling is used; no Realtime subscription is required |
-| PayPal | Registration/seller mapping verified; real USD 1.25 Sandbox invoice created and paid; signed invoice-created callback processed; minute reconciliation returning HTTP 200 | Paid-event/duplicate redelivery confirmation and final team rehearsal |
+| PayPal | Registration/seller mapping verified; real USD 1.25 Sandbox invoice paid; signed created/paid callbacks processed; one transaction retained; minute reconciliation returning HTTP 200 | Optional identical-callback duplicate rehearsal and final team rehearsal |
 | AI | Responses integration, bounded authorized context and validated IDs; provider failures safely classified | Configured API key reports `credit_balance_exhausted` / `insufficient_quota`; funded API project and live output evaluation needed |
 | Deployment | Integrated local environment and protected Vercel preview; production unchanged | Provider gates, manual UI rehearsal and explicit production approval |
 
@@ -186,10 +186,13 @@ remain under ignored `.supabase/`; they are retained rather than deleted.
   returned 400 from the handler without any Supabase credentials. Signature verification posts
   the complete event and transmission headers to PayPal, and requires `SUCCESS` before storing it.
   After redeployment, an invoice-shaped unsigned POST returned HTTP 400 `BAD_SIGNATURE`.
-  A genuine signed invoice-created event was received and processed after fixing PayPal's
+  Genuine signed invoice-created and invoice-paid events were received and processed after fixing PayPal's
   wrapped `resource.invoice.id` shape. Verification now also preserves original event JSON
   whitespace, escapes and number spelling. Forged signatures fail closed and create no inbox row.
   All reconciliation/admin paths reject anonymous, publishable-key and normal signed-in callers.
+  The user's paid-event resend returned HTTP 200 at 02:20:31 on 1 November 2026 (Asia/Manila).
+  Repeated provider GET reconciliation followed by this callback retained one paid-event row,
+  one invoice, one unique payment transaction, USD 1.25 settled and zero pending.
 - One Vault-backed minute reconciliation job is active. Three observed scheduled requests returned
   HTTP 200 without timeout/error. Anonymous and authenticated users cannot read decrypted Vault
   secrets or execute the service authorization/setup RPCs.
