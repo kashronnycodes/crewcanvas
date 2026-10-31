@@ -1,5 +1,8 @@
 # CrewCanvas backend verification — 1 November 2026 (Asia/Manila)
 
+This report records the original backend/payment verification. OpenAI's quota blocker was
+subsequently bypassed by the verified Gemini migration; see [current AI verification](gemini-verification.md).
+
 Target: **CrewCanvas_HACKATHON**, `tsnwowlyrlxpwwetmxns`, isolated `ronnybraces` login.
 All provider work used PayPal Sandbox. Picklaro was not accessed or modified.
 No Vercel production frontend deployment or merge to `main` was performed.

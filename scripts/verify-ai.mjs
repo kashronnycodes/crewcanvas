@@ -1,4 +1,4 @@
-// Real provider calls through authenticated Edge APIs; the OpenAI key stays in Supabase.
+// Real provider calls through authenticated Edge APIs; provider keys stay in Supabase.
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -106,16 +106,51 @@ try {
     assert.equal(summary.mode, "live");
     assert.equal(summary.intent, "summary");
     assert.ok(summary.text.length > 10);
-    passed.push("authorized workspace and revision summary");
+    passed.push("authorized contextual workspace summary");
     console.log("PASS real contextual workspace summary");
+    results.workspaceSummary = summary.text;
+    const taskSummary = await call("ai/workspace", {
+      text:
+        "Describe the Synthetic AI launch card's assigned tasks, deliverables and recorded revision history. Clearly state if there are no revision records.",
+    });
+    assert.equal(taskSummary.mode, "live");
+    assert.equal(taskSummary.intent, "summary");
+    assert.ok(taskSummary.text.length > 10);
+    assert.ok(taskSummary.highlight.every((id) => id === `task:${project.id}`));
+    results.taskSummary = taskSummary.text;
+    passed.push("task intelligence and absence-aware revision history summary");
+    console.log("PASS real task and revision-history summary");
     const revision = await call("ai/revision", {
       projectId: project.id,
       text: "Correct a misspelled heading and add a second alternate concept.",
     });
     assert.equal(revision.mode, "live");
     assert.ok(revision.items.length >= 2);
+    assert.ok(
+      revision.items.some((item) => item.classification === "likely_included"),
+    );
+    assert.ok(
+      revision.items.some((item) => item.classification === "potential_extra"),
+    );
+    results.revisionAnalysis = revision;
     passed.push("mixed revision split with validated sources");
     console.log("PASS real mixed revision analysis");
+    const beforeLayout = (await call("snapshot")).layout;
+    const progress = await call("ai/workspace", {
+      text: "Show today's recorded progress.",
+    });
+    assert.equal(progress.mode, "live");
+    assert.equal(progress.intent, "progress");
+    const organize = await call("ai/workspace", {
+      text: "Suggest a canvas layout without applying or saving changes.",
+    });
+    assert.equal(organize.mode, "live");
+    assert.equal(organize.intent, "organize");
+    assert.deepEqual((await call("snapshot")).layout, beforeLayout);
+    passed.push("read-only workflow insights and layout suggestions");
+    console.log(
+      "PASS workflow insights and suggestions do not auto-apply layout",
+    );
     const before = snapshot.projects.map((p) => ({
       id: p.id,
       version: p.version,
@@ -142,6 +177,14 @@ try {
     );
     const worker = await testSession(1);
     try {
+      await assert.rejects(
+        worker.request(
+          "ai/brief",
+          { brief: fixtureBrief },
+          fixture.workspaceId,
+        ),
+        { status: 403 },
+      );
       const answer = await worker.request("ai/workspace", {
         text:
           "Summarize my assigned synthetic project and note whether any deliveries or revisions are recorded.",
@@ -158,6 +201,28 @@ try {
       console.log("PASS worker AI context remains scoped to assigned work");
     } finally {
       await worker.close();
+    }
+    const outsider = await testSession(2);
+    try {
+      await assert.rejects(
+        outsider.request("ai/workspace", {
+          text: "Summarize this other workspace",
+        }, fixture.workspaceId),
+        { status: 403 },
+      );
+      await assert.rejects(
+        call("ai/revision", {
+          projectId: owner.fixtures.projectId,
+          text: "Compare work in the wrong selected workspace",
+        }),
+        { status: 403 },
+      );
+      passed.push("live AI role and cross-workspace access denial");
+      console.log(
+        "PASS worker brief creation and cross-workspace AI access denied",
+      );
+    } finally {
+      await outsider.close();
     }
     results.status = "passed";
   }

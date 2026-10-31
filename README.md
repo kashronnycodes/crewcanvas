@@ -52,7 +52,7 @@ React UI → typed repository / scope assistant / payment gateway
                  ├─ demo: browser-local state + deterministic responses
                  └─ integrated: authenticated Supabase Edge API
                       ├─ PostgreSQL: project entities, immutable terms, audit
-                      ├─ OpenAI: validated structured suggestions
+                      ├─ Gemini: validated structured suggestions (OpenAI rollback available)
                       └─ PayPal Sandbox: invoices, verified events, reconciliation
 ```
 
@@ -92,7 +92,7 @@ The optional `npm run seed:integrated` remains available for the older presenter
 fixtures; it is not required for registration or workspace creation.
 
 The server uses Supabase's injected `SUPABASE_SERVICE_ROLE_KEY` only on the backend.
-Never put secret/service keys, OpenAI keys or PayPal credentials in `VITE_` variables.
+Never put secret/service keys, Gemini/OpenAI keys or PayPal credentials in `VITE_` variables.
 Integrated mode does not fall back to mock data when a provider fails.
 
 ### Invitations and authorization
@@ -111,14 +111,18 @@ Browser role claims and user-editable metadata never authorize actions.
 
 ## Real AI
 
-Set server secrets `OPENAI_API_KEY` and `OPENAI_MODEL` (default `gpt-6-astra`).
+The default provider is Google Gemini's native API, using the stable
+`gemini-3.1-flash-lite` model. Set server secrets `GEMINI_API_KEY`,
+`AI_PROVIDER=gemini`, and optionally `GEMINI_MODEL`. Google lists a free tier;
+actual access and limits depend on the API project. See [the Gemini verification
+and manual test guide](docs/gemini-verification.md).
 Workspace questions can summarize authorized project progress, assigned work,
 deliverables, pending reviews, blockers and revision histories. Structured
 summaries reference validated project IDs; financial totals remain calculated
 by server code. Context is bounded and never includes credentials or file binaries.
 Brief extraction proposes editable tasks/deliverables. Revision comparison uses
 the accepted agreement's numbered clauses and current revision allowance.
-Both endpoints call Responses structured output, validate Zod schemas, and keep
+Both endpoints request structured JSON, validate the full original Zod schemas, and keep
 human approval outside the model. Source quotes are checked against the actual
 agreement. Calls are limited to ten per user per minute.
 
@@ -128,7 +132,11 @@ The live evaluation suite shares the exact runtime prompt:
 npx deno run --allow-env --allow-net --config supabase/functions/deno.json scripts/evaluate-ai.ts
 ```
 
-It requires `OPENAI_API_KEY` in the shell and makes 16 billable model calls.
+It defaults to Gemini and requires `GEMINI_API_KEY` in the private shell environment;
+it makes 16 provider calls, subject to that project's quota/billing. The evaluator is
+provider-neutral. For explicit rollback, set `AI_PROVIDER=openai` and use the retained
+`OPENAI_API_KEY` / `OPENAI_MODEL` configuration (default `gpt-6-astra`). Provider
+failures never automatically send the same workspace context to another provider.
 Passing means no fabricated quotes, all mixed requests split, and at least 14/16
 expected classifications. Do not claim the live gate passed without running it.
 Deterministic fixture tests do not substitute for model evaluation.
@@ -254,6 +262,8 @@ model call, or a completed PayPal sandbox payment.
 - [Supabase function authentication](https://supabase.com/docs/guides/functions/auth)
 - [Supabase table grants](https://supabase.com/changelog/45329-breaking-change-tables-not-exposed-to-data-and-graphql-api-automatically)
 - [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+- [Gemini structured outputs](https://ai.google.dev/gemini-api/docs/structured-output)
+- [Gemini model and pricing](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite)
 - [PayPal invoice setup](https://developer.paypal.com/api/invoicing)
 - [PayPal partner dependency](https://developer.paypal.com/platforms/invoicing/integrate)
 - [Invoice event semantics](https://developer.paypal.com/platforms/invoicing/reference/invoicing-webhooks/)

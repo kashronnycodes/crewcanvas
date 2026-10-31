@@ -20,8 +20,9 @@ These are not implied by a successful local build or by the demo.
    Seven migrations are applied. Do not create a replacement or modify unrelated projects.
 2. Rehearse owner/freelancer sign-ins in separate browser contexts. API/storage
    integration and worker/peer isolation passed; full browser rehearsal remains pending.
-3. Fund the configured OpenAI API project (the current key reports insufficient quota),
-   run the synthetic live verification, then run the 16-case evaluator.
+3. Gemini is now the verified default provider (`gemini-3.1-flash-lite` with server-only
+   `GEMINI_API_KEY`). Targeted live verification passed. Rehearse the browser flow and run
+   the broader provider-neutral 16-case evaluator before production.
    Require 16 valid/cited outputs, all four mixed cases split correctly,
    and at least 14 expected classifications.
 4. Configure one sandbox business seller, matching REST app, personal payer,

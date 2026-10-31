@@ -1,5 +1,9 @@
 // Do not echo SDK error messages: authentication errors can contain key fragments.
+import { AIProviderError } from "./gemini.ts";
 export function aiFailure(error: unknown) {
+  if (error instanceof AIProviderError) {
+    return { status: error.status, code: error.code, message: error.message };
+  }
   const value = error && typeof error === "object"
     ? error as {
       status?: number;

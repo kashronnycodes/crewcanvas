@@ -22,7 +22,7 @@
 | Files | Private bucket, server-authorized uploads, immutable version history, signed downloads | Large/resumable uploads, virus scanning and Office previews remain out of scope |
 | Activity | Durable project/file/workspace events; recipient-specific unread/read notifications | Fifteen-second polling is used; no Realtime subscription is required |
 | PayPal | Registration/seller mapping verified; real USD 1.25 Sandbox invoice paid; signed created/paid callbacks processed; one transaction retained; minute reconciliation returning HTTP 200 | Optional identical-callback duplicate rehearsal and final team rehearsal |
-| AI | Responses integration, bounded authorized context and validated IDs; provider failures safely classified | Configured API key reports `credit_balance_exhausted` / `insufficient_quota`; funded API project and live output evaluation needed |
+| AI | Gemini native structured generation verified through Supabase and frontend; bounded context, validated IDs, exact agreement quotes and safe errors; OpenAI retained for explicit rollback | Personal browser rehearsal and broader output-quality benchmark |
 | Deployment | Integrated local environment and protected Vercel preview; production unchanged | Provider gates, manual UI rehearsal and explicit production approval |
 
 ## Applied migration history
@@ -85,7 +85,7 @@ Provider failures never fall back to fake successful invoices or hardcoded live 
 |---|---|
 | Local `.env.local` / Vercel Preview browser build | `VITE_APP_MODE=integrated`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` |
 | Future Vercel Production browser build, after approval | Same public variables; currently production remains demo |
-| Supabase function secrets | `ALLOWED_ORIGIN`, optional comma-separated exact `ALLOWED_ORIGINS`, `OPENAI_API_KEY`, optional `OPENAI_MODEL`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MERCHANT_ID`, `PAYPAL_SELLER_EMAIL`, `PAYPAL_PAYER_EMAIL`, `PAYPAL_WEBHOOK_ID` |
+| Supabase function secrets | `ALLOWED_ORIGIN`, optional comma-separated exact `ALLOWED_ORIGINS`, `AI_PROVIDER=gemini`, `GEMINI_API_KEY`, optional `GEMINI_MODEL`; retained `OPENAI_API_KEY` / optional `OPENAI_MODEL` for explicit rollback; `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MERCHANT_ID`, `PAYPAL_SELLER_EMAIL`, `PAYPAL_PAYER_EMAIL`, `PAYPAL_WEBHOOK_ID` |
 | Supabase-provided runtime values | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`; never copy these into `VITE_` variables |
 | Owner seller-setup shell only | `CREW_SELLER_MEMBERSHIP_ID`; `setup:paypal` reads provider settings inside the backend |
 | Retry scheduler / Vault | `crewcanvas_project_url`, `crewcanvas_service_key`; configured with `npm run setup:reconcile` |
@@ -139,6 +139,7 @@ Additional owner-only commands:
 npm run setup:reconcile
 npm run test:ai:prepare
 npm run test:ai
+npm run test:ai:preview
 npm run setup:paypal -- --test-fixture
 npm run test:paypal-flow -- --prepare-only
 npm run test:paypal-flow
@@ -154,13 +155,13 @@ explicitly maps the seller to the labeled synthetic freelancer; otherwise set th
 `CREW_SELLER_MEMBERSHIP_ID`. A merchant cannot be silently remapped to another membership.
 The paid-flow command is resumable and creates a USD 1.25 Sandbox invoice only when run without
 `--prepare-only` or `--verify`. It never submits the payer's payment or fabricates settlement.
-The AI verification sends only an isolated, preflight-checked synthetic workspace to OpenAI,
+The AI verification sends only an isolated, preflight-checked synthetic workspace to the configured AI provider,
 with invented `example.com` identities and no uploads or real client work. Fixtures and results
 remain under ignored `.supabase/`; they are retained rather than deleted.
 
 ## Verification and limitations
 
-- 89 regression tests pass across 16 files, including executing the full migration chain in PostgreSQL,
+- 109 regression tests pass across 17 files, including executing the full migration chain in PostgreSQL,
   worker/peer isolation, direct-write denial, invitation identity/replay handling, timestamps,
   immutable file evidence, notifications, signup UI, persisted workspace selection, safe provider
   error handling and rejection of missing PayPal transmission signature headers.
@@ -202,9 +203,11 @@ remain under ignored `.supabase/`; they are retained rather than deleted.
   It also flags disabled leaked-password
   protection in hosted Auth. Review [Supabase's remediation](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection)
   and plan availability before public production rollout. Email confirmation remains enabled.
-- A fixed 64-token synthetic OpenAI probe reached the provider but returned HTTP 429,
-  `credit_balance_exhausted` / `insufficient_quota`. No live model output or quality evaluation
-  has passed. Add API credits or replace the server secret with a funded API-project key.
+- OpenAI returned `credit_balance_exhausted` / `insufficient_quota` and remains available only
+  as an explicit configuration rollback. Gemini subsequently passed real brief extraction,
+  contextual/task/revision-history summaries, mixed-scope analysis with validated quotes,
+  workflow insights, mutation refusal and live role/tenant denial checks. The browser displayed
+  Gemini summaries and editable task/deliverable suggestions. See `docs/gemini-verification.md`.
 - All required secret names are present; values and digests were withheld. The production npm
   dependency audit reports zero vulnerabilities. Retained synthetic evidence stays in ignored `.supabase/`.
 - No PayPal Payouts or multi-seller onboarding is implemented or implied.
@@ -215,7 +218,7 @@ remain under ignored `.supabase/`; they are retained rather than deleted.
    for payment rehearsal; moving the merchant to a real teammate requires an explicit reviewed
    mapping change, not silently overwriting the paid test's history.
 2. Inspect the existing Vault-backed retry schedule, pending webhook errors and function logs.
-3. Fund the OpenAI API project, run synthetic live AI verification and the quality evaluation,
-   then rehearse the complete two-user UI workflow on the protected preview.
+3. Rehearse Gemini-assisted work through the two-user UI on the protected preview and run the
+   broader 16-case model-quality benchmark before production. Targeted live Gemini checks passed.
 4. Rehearse real email confirmation and the team-facing demo. Review Auth advisor warnings.
 5. Review the pull request and approve the production environment/deployment as the final release step.
