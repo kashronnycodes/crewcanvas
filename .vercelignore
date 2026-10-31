@@ -1,6 +1,7 @@
 .git
 .openai
 .sites-runtime
+.supabase
 .env
 .env.*
 !.env.example

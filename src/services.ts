@@ -26,6 +26,13 @@ export const mode = import.meta.env.VITE_APP_MODE === "integrated"
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 export const supabase = url && key ? createClient(url, key) : null;
+let activeWorkspaceId: string | null = null;
+export function setActiveWorkspace(id: string | null) {
+  activeWorkspaceId = id;
+}
+export function workspaceHeaders(): Record<string, string> {
+  return activeWorkspaceId ? { "X-Workspace-Id": activeWorkspaceId } : {};
+}
 const storageKey = "crewcanvas.demo.v1";
 let memory: WorkspaceSnapshot | undefined;
 function readDemo(): WorkspaceSnapshot {
@@ -70,6 +77,7 @@ export interface PaymentGateway {
   reconcile(projectId: string): Promise<void>;
 }
 export async function api(path: string, body?: unknown, requestId?: string) {
+  const selectedWorkspaceHeaders = workspaceHeaders();
   if (!supabase) {
     throw new Error(
       "Integrated mode needs a Supabase URL and publishable key. Configure .env and restart.",
@@ -85,6 +93,7 @@ export async function api(path: string, body?: unknown, requestId?: string) {
       Authorization: `Bearer ${session.access_token}`,
       apikey: key,
       "Content-Type": "application/json",
+      ...selectedWorkspaceHeaders,
       ...(requestId ? { "Idempotency-Key": requestId } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),

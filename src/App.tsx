@@ -1,4 +1,5 @@
 import InvitationSetup from "./components/InvitationSetup";
+import AccountGate from "./components/AccountGate";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -30,6 +31,7 @@ import { indicators, todayIn, uid } from "../shared/domain";
 import type { Command } from "../shared/validation";
 import { IDS } from "../shared/seed";
 import {
+  api,
   inviteMember,
   mode,
   payments,
@@ -46,9 +48,30 @@ import ProjectForm from "./components/ProjectForm";
 import { LayoutSaveQueue } from "./layoutQueue";
 type Filter = "all" | "attention" | "completed";
 export default function App() {
+  return mode === "integrated"
+    ? (
+      <AccountGate>
+        {(authId, workspaceId, choose) => (
+          <WorkspaceApp
+            authId={authId}
+            workspaceId={workspaceId}
+            chooseWorkspace={choose}
+          />
+        )}
+      </AccountGate>
+    )
+    : <WorkspaceApp />;
+}
+function WorkspaceApp(
+  { authId = null, workspaceId = null, chooseWorkspace }: {
+    authId?: string | null;
+    workspaceId?: string | null;
+    chooseWorkspace?: () => void;
+  },
+) {
   const client = useQueryClient();
-  const [authId, setAuthId] = useState<string | null>(null);
-  const [authReady, setAuthReady] = useState(mode === "demo");
+
+  const authReady = true;
   const [actorId, setActorId] = useState(IDS.myron as string);
   const [view, setView] = useState<"canvas" | "list">(() =>
     window.innerWidth < 768 ? "list" : "canvas"
@@ -62,33 +85,13 @@ export default function App() {
   const [newProject, setNewProject] = useState(false);
   const [invite, setInvite] = useState(false);
   const [help, setHelp] = useState(false);
+  const [inbox, setInbox] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [saveStatus, setSaveStatus] = useState("All changes saved");
   const saveQueue = useRef(new LayoutSaveQueue());
-  useEffect(() => {
-    if (mode !== "integrated") return;
-    if (!supabase) {
-      setAuthReady(true);
-      return;
-    }
-    void supabase.auth.getSession().then(({ data }) => {
-      setAuthId(data.session?.user.id ?? null);
-      setAuthReady(true);
-    });
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthId(session?.user.id ?? null);
-      setSelected(null);
-      saveQueue.current.reset();
-      client.removeQueries({ queryKey: ["workspace"] });
-      setAuthReady(true);
-    });
-    return () => subscription.unsubscribe();
-  }, [client]);
-  const key = ["workspace", mode, actorId, authId];
+  const key = ["workspace", mode, actorId, authId, workspaceId];
   const query = useQuery({
     queryKey: key,
     queryFn: () => repository.load(),
@@ -118,7 +121,11 @@ export default function App() {
           const saved = await repository.saveLayout(queued);
           client.setQueriesData<WorkspaceSnapshot>(
             { queryKey: ["workspace", mode] },
-            (old) => (old ? { ...old, layout: saved } : old),
+            (
+              old,
+            ) => (old && (mode === "demo" || old.id === workspaceId)
+              ? { ...old, layout: saved }
+              : old),
           );
           setSaveStatus("All changes saved");
           return saved;
@@ -129,7 +136,7 @@ export default function App() {
         }
       });
     },
-    [client, notify],
+    [client, notify, workspaceId],
   );
   async function run(
     action: () => Promise<unknown>,
@@ -232,9 +239,14 @@ export default function App() {
       <header className="topbar">
         <Brand />
         <span className="topbar-divider" />
-        <button className="workspace-switch" onClick={() => setHelp(true)}>
+        <button
+          className="workspace-switch"
+          disabled={busy || saveStatus === "Saving…"}
+          onClick={chooseWorkspace ?? (() => setHelp(true))}
+        >
           <span className="workspace-monogram">
-            N<span>✦</span>
+            {snapshot.name.trim()[0]}
+            <span>✦</span>
           </span>
           <span>{snapshot.name}</span>
           <ChevronDown size={13} />
@@ -254,6 +266,10 @@ export default function App() {
             className="icon-button notification-button"
             aria-label="Show items needing attention"
             onClick={() => {
+              if (mode === "integrated") {
+                setInbox(true);
+                return;
+              }
               const p = snapshot.projects.find((p) =>
                 p.invoices.some(
                   (i) => i.state !== "paid" && i.paidMinor !== i.amountMinor,
@@ -264,7 +280,9 @@ export default function App() {
             }}
           >
             <Bell size={19} />
-            {counts.attention > 0 && <i />}
+            {(mode === "integrated"
+              ? snapshot.notifications?.some((n) => !n.read_at)
+              : counts.attention > 0) && <i />}
           </button>
           <span className="topbar-divider" />
           <button
@@ -654,6 +672,48 @@ export default function App() {
       {invite && (
         <Invitation onClose={() => setInvite(false)} onNotify={notify} />
       )}
+      {inbox && (
+        <Modal
+          title="Notifications"
+          description="Updates from your workspace"
+          onClose={() => setInbox(false)}
+        >
+          {(snapshot.notifications ?? []).length === 0
+            ? <p>You're all caught up.</p>
+            : (snapshot.notifications ?? []).map((n) => (
+              <div className="info-note" key={n.id}>
+                <p>{n.text}</p>
+                <small>{new Date(n.created_at).toLocaleString()}</small>
+                {!n.read_at && (
+                  <button
+                    className="button secondary"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(() => api("notifications/read", { id: n.id }))}
+                  >
+                    Mark as read
+                  </button>
+                )}
+                {n.project_id && (
+                  <button
+                    className="button secondary"
+                    onClick={() => {
+                      const p = snapshot.projects.find((p) =>
+                        p.id === n.project_id
+                      );
+                      if (p) {
+                        onSelect(p.workerId, "all", p.id);
+                        setInbox(false);
+                      }
+                    }}
+                  >
+                    Open project
+                  </button>
+                )}
+              </div>
+            ))}
+        </Modal>
+      )}
       {resetOpen && (
         <Modal
           title="A fresh canvas?"
@@ -688,7 +748,7 @@ export default function App() {
       {help && (
         <Modal
           title="A clearer picture of your creative team"
-          description="CrewCanvas · Northstar Creative"
+          description={`CrewCanvas · ${snapshot.name}`}
           onClose={() => setHelp(false)}
         >
           <div className="help-content">
@@ -723,7 +783,7 @@ export default function App() {
             <div className="info-note">
               {mode === "demo"
                 ? "You are in a local demo. The role selector demonstrates workflows; it is not authentication. AI is deterministic and all payment actions are simulated."
-                : "You are authenticated. Only Ava has a connected sandbox seller. Other historical payments are sample data. Full multi-seller onboarding is outside this build."}
+                : "You are authenticated. Invoicing requires the configured Sandbox seller. Historical sample payments are labeled separately. Multi-seller onboarding and automatic Payouts are not available."}
             </div>
             <button className="button primary" onClick={() => setHelp(false)}>
               Back to the canvas

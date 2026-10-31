@@ -1,13 +1,14 @@
 import { z } from "zod";
 import {
+  admin,
   body,
+  env,
   errorResponse,
   HttpError,
   providerStore,
   respond,
 } from "../_shared/backend.ts";
 import { paypal, processWebhookEvent } from "../_shared/paypal.ts";
-import { IDS } from "../../../shared/seed.ts";
 const eventSchema = z
   .object({
     id: z.string().min(1).max(100),
@@ -16,8 +17,9 @@ const eventSchema = z
   })
   .passthrough();
 export async function handler(req: Request): Promise<Response> {
-  if (req.method !== "POST")
+  if (req.method !== "POST") {
     return respond(req, { error: { message: "POST required" } }, 405);
+  }
   try {
     const raw = await body(req);
     const event = eventSchema.parse(raw);
@@ -33,23 +35,37 @@ export async function handler(req: Request): Promise<Response> {
         webhook_event: raw,
       },
     );
-    if (verification.verification_status !== "SUCCESS")
+    if (verification.verification_status !== "SUCCESS") {
       throw new HttpError(
         400,
         "BAD_SIGNATURE",
         "Webhook signature could not be verified.",
       );
-    if (!event.event_type.startsWith("INVOICING.INVOICE."))
+    }
+    if (!event.event_type.startsWith("INVOICING.INVOICE.")) {
       return respond(req, { ignored: true });
-    if (!event.resource.id?.startsWith("INV2-"))
+    }
+    if (!event.resource.id?.startsWith("INV2-")) {
       throw new HttpError(
         400,
         "INVALID_EVENT",
         "No invoice identifier in the event.",
       );
+    }
+    const connection = await admin().rpc("configured_sandbox_seller", {
+      p_merchant_id: env("PAYPAL_MERCHANT_ID"),
+      p_email: env("PAYPAL_SELLER_EMAIL"),
+    });
+    if (connection.error || !connection.data) {
+      throw new HttpError(
+        503,
+        "NOT_CONFIGURED",
+        "Configure the sandbox seller before registering webhooks.",
+      );
+    }
     const stored = await providerStore("webhook_insert", {
       eventId: event.id,
-      sellerConnectionId: IDS.seller,
+      sellerConnectionId: connection.data,
       providerId: event.resource.id,
       event,
     });

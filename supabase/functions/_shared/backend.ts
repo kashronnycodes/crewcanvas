@@ -32,16 +32,25 @@ export class HttpError extends Error {
 }
 export function headers(req: Request) {
   const origin = req.headers.get("Origin");
-  const allowed = Deno.env.get("ALLOWED_ORIGIN") ?? "";
+  const allowed = allowedOrigins();
   return {
     "Content-Type": "application/json",
-    ...(origin === allowed
-      ? { "Access-Control-Allow-Origin": allowed, Vary: "Origin" }
+    ...(origin && allowed.includes(origin)
+      ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" }
       : {}),
     "Access-Control-Allow-Headers":
-      "authorization, apikey, content-type, idempotency-key, x-client-info",
+      "authorization, apikey, content-type, idempotency-key, x-client-info, x-workspace-id",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   };
+}
+export function allowedOrigins(): string[] {
+  return [
+    Deno.env.get("ALLOWED_ORIGIN"),
+    ...(Deno.env.get("ALLOWED_ORIGINS") ?? "").split(","),
+  ]
+    .filter((value): value is string => !!value?.trim()).map((value) =>
+      value.trim()
+    );
 }
 export function respond(req: Request, body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: headers(req) });
@@ -101,9 +110,7 @@ export async function body(req: Request) {
     throw new HttpError(400, "VALIDATION", "Send a JSON request body.");
   }
 }
-export async function actor(
-  req: Request,
-): Promise<SessionActor & { authUserId: string; email: string }> {
+export async function authenticatedUser(req: Request) {
   const token = req.headers.get("Authorization")?.replace(/^Bearer /, "");
   if (!token) {
     throw new HttpError(401, "UNAUTHENTICATED", "Sign in to continue.");
@@ -117,11 +124,23 @@ export async function actor(
       "Your session expired. Sign in again.",
     );
   }
-  const membership = await db
+  return data.user;
+}
+export async function actor(
+  req: Request,
+  identity?: Awaited<ReturnType<typeof authenticatedUser>>,
+): Promise<SessionActor & { authUserId: string; email: string }> {
+  const user = identity ?? await authenticatedUser(req);
+  const workspaceId = req.headers.get("X-Workspace-Id");
+  if (workspaceId && !/^[0-9a-f-]{36}$/i.test(workspaceId)) {
+    throw new HttpError(400, "VALIDATION", "Invalid workspace.");
+  }
+  let query = admin()
     .from("memberships")
     .select("*")
-    .eq("auth_user_id", data.user.id)
-    .single();
+    .eq("auth_user_id", user.id);
+  if (workspaceId) query = query.eq("workspace_id", workspaceId);
+  const membership = await query.single();
   if (membership.error || !membership.data) {
     throw new HttpError(
       403,
@@ -133,8 +152,8 @@ export async function actor(
     id: membership.data.id,
     role: membership.data.access_role,
     workspaceId: membership.data.workspace_id,
-    authUserId: data.user.id,
-    email: data.user.email ?? "",
+    authUserId: user.id,
+    email: user.email ?? "",
   };
 }
 const children = {
@@ -264,10 +283,20 @@ export async function snapshot(user: SessionActor): Promise<WorkspaceSnapshot> {
     filesQuery = filesQuery.in("project_id", ids);
     activityQuery = activityQuery.in("project_id", ids);
   }
-  const [files, activity] = await Promise.all([filesQuery, activityQuery]);
+  const [files, activity, notifications] = await Promise.all([
+    filesQuery,
+    activityQuery,
+    db.from("notifications").select("*").eq("recipient_id", user.id).eq(
+      "workspace_id",
+      user.workspaceId,
+    )
+      .order("created_at", { ascending: false }).limit(100),
+  ]);
   if (files.error) throw files.error;
   if (activity.error) throw activity.error;
+  if (notifications.error) throw notifications.error;
   return {
+    notifications: notifications.data,
     files: files.data.map((f) => f.data),
     workspaceActivity: activity.data.map((e) => ({
       id: e.id,

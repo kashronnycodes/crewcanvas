@@ -73,31 +73,23 @@ or regrouping cannot alter memberships, project assignments or seller identity.
 
 ## Enable the integrated build
 
-Provision a **dedicated CrewCanvas Supabase project**. Do not migrate an unrelated
-project. No existing connected Supabase projects are assumed to belong to this app.
+The verified backend is **CrewCanvas_HACKATHON** (`tsnwowlyrlxpwwetmxns`) in the
+`ronnybraces` organization. Do not create another project or use a Picklaro project.
+See [the backend integration handoff](docs/backend-integration.md) for actual
+verification, applied migrations, environment separation, and remaining provider gates.
 
-1. Install/use the official Supabase CLI (`npx supabase --help`). Authenticate,
-   link the new project, and apply the migration with `npx supabase db push`.
-2. In Supabase Auth, disable public sign-up and configure the frontend Site URL
-   and the allowed invitation redirect `<frontend-origin>/?invite=1`.
-3. Set secrets for Edge Functions using the dashboard or CLI. The variable names
-   are in `supabase/functions/.env.example`; do not commit actual values.
-4. Deploy `crew-api`, `paypal-webhook`, and `reconcile`. The function configuration
-   keeps JWT verification on for the user API. Only provider/scheduler endpoints
-   disable it; those verify their own provider signature or server API key.
-5. Seed from a shell with `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and a
-   `CREW_SEED_PASSWORD` of at least 12 characters:
+1. Copy `.env.example` to `.env.local`; set `VITE_APP_MODE=integrated` and the
+   project's browser publishable key. The URL is already included in the example.
+2. Run `npm ci` and `npm run dev`. Sign up, confirm the email, then sign in.
+3. Create a workspace, invite the intended freelancer by email, and manually share
+   the generated invitation link. Existing accounts can accept the same flow.
+4. The freelancer signs in using the invited, verified email and accepts the invitation.
+5. Create an assigned project and proposed agreement; use the existing review workflow.
 
-   ```powershell
-   npm run seed:integrated
-   ```
-
-   This creates the seven presenter accounts and sample projects. Sign in as
-   `myron@northstar.example` or `ava@northstar.example` with that password.
-   Rerunning preserves existing accounts, layouts, projects and payment history.
-
-6. Copy `.env.example` to `.env`; set `VITE_APP_MODE=integrated`, the project URL,
-   and its browser publishable key. Restart Vite or rebuild the static frontend.
+`npm run setup:integrated` securely configures the local public variables for the
+owner's isolated CLI profile. Ordinary teammates can set these public values manually.
+The optional `npm run seed:integrated` remains available for the older presenter
+fixtures; it is not required for registration or workspace creation.
 
 The server uses Supabase's injected `SUPABASE_SERVICE_ROLE_KEY` only on the backend.
 Never put secret/service keys, OpenAI keys or PayPal credentials in `VITE_` variables.
@@ -105,10 +97,11 @@ Integrated mode does not fall back to mock data when a provider fails.
 
 ### Invitations and authorization
 
-Myron generates an invitation link for manual sharing. No custom email service
-is required. The invited worker chooses a password and receives only their own
-project access. Existing-account or expired-link errors require a fresh invitation
-or administrator help; they never grant employer access.
+Employers generate a seven-day, email-bound invitation link for manual sharing.
+Only its SHA-256 hash is stored in the private schema. The recipient must sign in
+with the invited, verified email before accepting; new and existing accounts work.
+An invitation grants a worker membership, never an employer role. Memberships are
+workspace-specific, so the same account can belong to multiple workspaces.
 
 Every API call verifies the actual Auth user and current database membership.
 Workers cannot read peers, modify the canvas, accept their own delivery or
@@ -119,6 +112,10 @@ Browser role claims and user-editable metadata never authorize actions.
 ## Real AI
 
 Set server secrets `OPENAI_API_KEY` and `OPENAI_MODEL` (default `gpt-6-astra`).
+Workspace questions can summarize authorized project progress, assigned work,
+deliverables, pending reviews, blockers and revision histories. Structured
+summaries reference validated project IDs; financial totals remain calculated
+by server code. Context is bounded and never includes credentials or file binaries.
 Brief extraction proposes editable tasks/deliverables. Revision comparison uses
 the accepted agreement's numbered clauses and current revision allowance.
 Both endpoints call Responses structured output, validate Zod schemas, and keep
@@ -138,7 +135,7 @@ Deterministic fixture tests do not substitute for model evaluation.
 
 ## Real PayPal sandbox integration
 
-Only **Ava Cruz** is supported as a connected seller in this build. A freelancer
+One configured freelancer membership is supported as the connected seller. A freelancer
 needs their own supported PayPal business account with Invoicing enabled.
 An application's credentials do not authorize every freelancer. Full seller
 onboarding requires PayPal partner eligibility/permissions and is deferred.
@@ -154,6 +151,10 @@ Configure these server secrets:
 
 Also provide the merchant ID and seller email to the seed shell and rerun the
 seed; it records Ava's non-secret seller connection. Credentials stay in secrets.
+For a workspace created through registration, set `CREW_SELLER_MEMBERSHIP_ID`,
+`PAYPAL_MERCHANT_ID`, and `PAYPAL_SELLER_EMAIL` in the owner's isolated CLI shell
+and run `npm run configure:seller` instead. It refuses to overwrite a different
+seller or create an ambiguous second mapping.
 New connected-seller projects can create invoices. Historical sample projects
 cannot create real invoices, even when assigned to Ava.
 

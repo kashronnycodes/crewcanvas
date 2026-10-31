@@ -181,6 +181,7 @@ export interface CanvasLayout {
   viewport: { x: number; y: number; zoom: number };
 }
 export interface WorkspaceSnapshot {
+  notifications?: WorkspaceNotification[];
   files?: WorkspaceFile[];
   workspaceActivity?: Activity[];
   demoRosterVersion?: number;
@@ -192,6 +193,13 @@ export interface WorkspaceSnapshot {
   layout: CanvasLayout;
   sellerConnectionId: string;
   actorId: string;
+}
+export interface WorkspaceNotification {
+  id: string;
+  project_id: string | null;
+  text: string;
+  created_at: string;
+  read_at: string | null;
 }
 export interface FileVersion {
   path: string;
@@ -216,6 +224,7 @@ export interface WorkspaceFile {
   updatedAt: string;
 }
 export type WorkspaceIntent =
+  | "summary"
   | "payments"
   | "progress"
   | "organize"

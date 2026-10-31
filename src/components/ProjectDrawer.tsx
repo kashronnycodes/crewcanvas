@@ -585,7 +585,7 @@ export default function ProjectDrawer({
                         {mode === "integrated" && !person.connected && (
                           <div className="info-note">
                             This worker has no connected sandbox seller.
-                            Invoicing is available only for Ava in this build.
+                            Invoicing requires the configured Sandbox seller.
                           </div>
                         )}
                         <div className="info-note">
