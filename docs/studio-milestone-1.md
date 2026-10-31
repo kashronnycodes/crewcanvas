@@ -61,13 +61,17 @@ invoice or payment was created by this milestone. `OPENAI_API_KEY` is retained.
 
 ## Verification
 
-- 120 automated tests in 19 files, TypeScript/Vite build and all three Edge
+- 122 automated tests in 19 files, TypeScript/Vite build and all three Edge
   Function type checks passed.
-- Eight new database/contract tests cover note/stroke persistence, peer
+- Ten new database/contract tests cover note/stroke persistence, peer
   isolation, simultaneous independent edits, stale versions, schema/URL bounds,
   connector isolation, attribution, feedback, deletion/restore and financial
   write denial. Additional tests cover theme persistence, invite-only sign-in
   and scoped expired-session cleanup.
+- A final race review tightened drag, resize and keyboard movement to the
+  version captured when editing began. A database regression simulates a
+  collaborator moving the object during the gesture and verifies that the
+  stale save cannot replace their newer position.
 - Four hosted whiteboard groups passed twice: bidirectional authorized Realtime,
   denied outsider reads/writes/events, conflict protection, feedback resolution
   and synchronized soft deletion. `npm run test:board` uses synthetic accounts;
