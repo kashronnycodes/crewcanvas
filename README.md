@@ -3,11 +3,26 @@
 A visual workspace for creative teams: people, clear agreements, deliveries,
 thoughtful revisions, and payments in perspective.
 
+[Open the live demo](https://crewcanvas.vercel.app) ·
+[GitHub repository](https://github.com/kashronnycodes/crewcanvas)
+
+The deployed app runs in **demo mode**: AI and payments are simulated, and each
+browser keeps its own workspace and uploaded files. Sharing the link does not
+synchronize teammates' data. Live authentication, shared storage, AI, and PayPal
+Sandbox require the integrated setup below.
+
+CrewCanvas 2.0 adds persistent file cards, project/payment/revision nodes, contextual
+inspectors, meaningful connections, focus modes, financial flow, a workspace command
+bar and an activity timeline. See [the implementation handoff](docs/crewcanvas-2-handoff.md)
+for the migration, environment setup, actual test results and external verification gates.
+
 ## Run locally
 
 Requires Node.js 24 and npm.
 
 ```powershell
+git clone https://github.com/kashronnycodes/crewcanvas.git
+cd crewcanvas
 npm ci
 npm run dev
 ```

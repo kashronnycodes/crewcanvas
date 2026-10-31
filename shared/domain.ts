@@ -206,6 +206,7 @@ export function execute(
       );
       break;
     }
+    case "submitFileDelivery":
     case "submitDelivery": {
       worker();
       const a = agreed();
@@ -231,7 +232,8 @@ export function execute(
       p.deliveries.push({
         id: uid(),
         agreementId: a.id,
-        url: command.url,
+        url: command.type === "submitDelivery" ? command.url : "",
+        ...(command.type === "submitFileDelivery" ? { fileId: command.fileId, fileVersion: command.fileVersion } : {}),
         label: command.label,
         note: command.note,
         submittedAt: now,

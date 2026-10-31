@@ -1,0 +1,16 @@
+.git
+.openai
+.sites-runtime
+.env
+.env.*
+!.env.example
+node_modules
+dist
+coverage
+test-results
+playwright-report
+*.tsbuildinfo
+*.tar.gz
+supabase/.temp
+supabase/functions/.env*
+!supabase/functions/.env.example

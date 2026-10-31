@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.80.0";
-import { DomainError, assertProjectAccess } from "../../../shared/domain.ts";
+import { assertProjectAccess, DomainError } from "../../../shared/domain.ts";
 import type {
   Person,
   Project,
@@ -8,12 +8,13 @@ import type {
 } from "../../../shared/types.ts";
 export function env(name: string): string {
   const value = Deno.env.get(name);
-  if (!value)
+  if (!value) {
     throw new HttpError(
       503,
       "NOT_CONFIGURED",
       `Server configuration is missing ${name}.`,
     );
+  }
   return value;
 }
 export const admin = () =>
@@ -46,19 +47,21 @@ export function respond(req: Request, body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: headers(req) });
 }
 export function errorResponse(req: Request, error: unknown) {
-  if (error instanceof HttpError)
+  if (error instanceof HttpError) {
     return respond(
       req,
       { error: { code: error.code, message: error.message } },
       error.status,
     );
-  if (error instanceof DomainError)
+  }
+  if (error instanceof DomainError) {
     return respond(
       req,
       { error: { code: error.code, message: error.message } },
       error.code === "FORBIDDEN" ? 403 : error.code === "CONFLICT" ? 409 : 400,
     );
-  if (error && typeof error === "object" && "issues" in error)
+  }
+  if (error && typeof error === "object" && "issues" in error) {
     return respond(
       req,
       {
@@ -70,6 +73,7 @@ export function errorResponse(req: Request, error: unknown) {
       },
       400,
     );
+  }
   console.error(
     "CrewCanvas server error",
     error instanceof Error ? error.message : "Unknown error",
@@ -88,8 +92,9 @@ export function errorResponse(req: Request, error: unknown) {
 }
 export async function body(req: Request) {
   const text = await req.text();
-  if (text.length > 60000)
+  if (text.length > 60000) {
     throw new HttpError(413, "TOO_LARGE", "This request is too large.");
+  }
   try {
     return JSON.parse(text);
   } catch {
@@ -100,27 +105,30 @@ export async function actor(
   req: Request,
 ): Promise<SessionActor & { authUserId: string; email: string }> {
   const token = req.headers.get("Authorization")?.replace(/^Bearer /, "");
-  if (!token)
+  if (!token) {
     throw new HttpError(401, "UNAUTHENTICATED", "Sign in to continue.");
+  }
   const db = admin();
   const { data, error } = await db.auth.getUser(token);
-  if (error || !data.user)
+  if (error || !data.user) {
     throw new HttpError(
       401,
       "UNAUTHENTICATED",
       "Your session expired. Sign in again.",
     );
+  }
   const membership = await db
     .from("memberships")
     .select("*")
     .eq("auth_user_id", data.user.id)
     .single();
-  if (membership.error || !membership.data)
+  if (membership.error || !membership.data) {
     throw new HttpError(
       403,
       "FORBIDDEN",
       "Your account has not been invited to this workspace.",
     );
+  }
   return {
     id: membership.data.id,
     role: membership.data.access_role,
@@ -140,8 +148,9 @@ const children = {
 export async function loadProject(id: string): Promise<Project> {
   const db = admin();
   const row = await db.from("projects").select("*").eq("id", id).single();
-  if (row.error || !row.data)
+  if (row.error || !row.data) {
     throw new HttpError(404, "NOT_FOUND", "Project not found.");
+  }
   const p = { ...row.data.data, version: row.data.version } as Project;
   await Promise.all(
     Object.entries(children).map(async ([field, table]) => {
@@ -152,7 +161,7 @@ export async function loadProject(id: string): Promise<Project> {
         .sort((a, b) =>
           (a.createdAt ?? a.submittedAt ?? a.syncedAt ?? "").localeCompare(
             b.createdAt ?? b.submittedAt ?? b.syncedAt ?? "",
-          ),
+          )
         );
     }),
   );
@@ -176,16 +185,18 @@ export async function commit(
     p_request_id: requestId,
   });
   if (error) {
-    if (error.message.includes("CONFLICT") || error.code === "23505")
+    if (error.message.includes("CONFLICT") || error.code === "23505") {
       throw new DomainError(
         "CONFLICT",
         "This project changed or the operation is already in progress. Refresh and retry.",
       );
-    if (error.message.includes("FORBIDDEN"))
+    }
+    if (error.message.includes("FORBIDDEN")) {
       throw new DomainError(
         "FORBIDDEN",
         "You do not have permission to make this change.",
       );
+    }
     throw error;
   }
   return data;
@@ -219,8 +230,7 @@ export async function snapshot(user: SessionActor): Promise<WorkspaceSnapshot> {
   const people = members.data.map((x) => x.data as Person);
   await Promise.all(
     people.map(async (person) => {
-      person.connected =
-        person.accessRole === "worker" &&
+      person.connected = person.accessRole === "worker" &&
         !!(await providerStore("seller", { workerId: person.id }));
     }),
   );
@@ -228,20 +238,44 @@ export async function snapshot(user: SessionActor): Promise<WorkspaceSnapshot> {
     .from("projects")
     .select("id")
     .eq("workspace_id", user.workspaceId);
-  if (user.role === "worker")
+  if (user.role === "worker") {
     projectQuery = projectQuery.eq("worker_id", user.id);
+  }
   const projects = await projectQuery;
   if (projects.error) throw projects.error;
-  const layout =
-    user.role === "employer"
-      ? await db
-          .from("canvas_layouts")
-          .select("data")
-          .eq("workspace_id", user.workspaceId)
-          .single()
-      : null;
+  const layout = user.role === "employer"
+    ? await db
+      .from("canvas_layouts")
+      .select("data")
+      .eq("workspace_id", user.workspaceId)
+      .single()
+    : null;
   if (layout?.error) throw layout.error;
+  let filesQuery = db.from("workspace_files").select("data,project_id").eq(
+    "workspace_id",
+    user.workspaceId,
+  ).eq("deleted", false);
+  let activityQuery = db.from("workspace_activity").select("*").eq(
+    "workspace_id",
+    user.workspaceId,
+  ).order("created_at", { ascending: false }).limit(100);
+  if (user.role === "worker") {
+    const ids = projects.data.map((p) => p.id);
+    filesQuery = filesQuery.in("project_id", ids);
+    activityQuery = activityQuery.in("project_id", ids);
+  }
+  const [files, activity] = await Promise.all([filesQuery, activityQuery]);
+  if (files.error) throw files.error;
+  if (activity.error) throw activity.error;
   return {
+    files: files.data.map((f) => f.data),
+    workspaceActivity: activity.data.map((e) => ({
+      id: e.id,
+      actorId: e.actor_id,
+      projectId: e.project_id,
+      text: e.text,
+      createdAt: e.created_at,
+    })),
     id: ws.data.id,
     name: ws.data.name,
     timezone: ws.data.timezone,

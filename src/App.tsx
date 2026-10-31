@@ -43,6 +43,7 @@ import Canvas, { StatusBadges } from "./components/Canvas";
 import Modal from "./components/Modal";
 import ProjectDrawer from "./components/ProjectDrawer";
 import ProjectForm from "./components/ProjectForm";
+import { LayoutSaveQueue } from "./layoutQueue";
 type Filter = "all" | "attention" | "completed";
 export default function App() {
   const client = useQueryClient();
@@ -50,7 +51,7 @@ export default function App() {
   const [authReady, setAuthReady] = useState(mode === "demo");
   const [actorId, setActorId] = useState(IDS.myron as string);
   const [view, setView] = useState<"canvas" | "list">(() =>
-    window.innerWidth < 768 ? "list" : "canvas",
+    window.innerWidth < 768 ? "list" : "canvas"
   );
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -65,8 +66,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [saveStatus, setSaveStatus] = useState("All changes saved");
-  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
-  const layoutVersion = useRef<number | null>(null);
+  const saveQueue = useRef(new LayoutSaveQueue());
   useEffect(() => {
     if (mode !== "integrated") return;
     if (!supabase) {
@@ -82,6 +82,7 @@ export default function App() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthId(session?.user.id ?? null);
       setSelected(null);
+      saveQueue.current.reset();
       client.removeQueries({ queryKey: ["workspace"] });
       setAuthReady(true);
     });
@@ -95,9 +96,6 @@ export default function App() {
     refetchInterval: mode === "integrated" ? 15000 : false,
   });
   const snapshot = query.data;
-  useEffect(() => {
-    if (snapshot) layoutVersion.current = snapshot.layout.version;
-  }, [snapshot?.layout.version]);
   useEffect(() => {
     if (!toast) return;
     const timeout = setTimeout(() => setToast(""), 6500);
@@ -115,29 +113,21 @@ export default function App() {
   const saveLayout = useCallback(
     async (layout: CanvasLayout) => {
       setSaveStatus("Saving…");
-      const task = saveQueue.current
-        .catch(() => {})
-        .then(async () => {
-          try {
-            const saved = await repository.saveLayout({
-              ...layout,
-              version: layout.version,
-            });
-            layoutVersion.current = saved.version;
-            client.setQueriesData<WorkspaceSnapshot>(
-              { queryKey: ["workspace", mode] },
-              (old) => (old ? { ...old, layout: saved } : old),
-            );
-            setSaveStatus("All changes saved");
-            return saved;
-          } catch (error) {
-            setSaveStatus("Save failed · reload to retry");
-            notify((error as Error).message);
-            throw error;
-          }
-        });
-      saveQueue.current = task;
-      return task;
+      return saveQueue.current.save(layout, async (queued) => {
+        try {
+          const saved = await repository.saveLayout(queued);
+          client.setQueriesData<WorkspaceSnapshot>(
+            { queryKey: ["workspace", mode] },
+            (old) => (old ? { ...old, layout: saved } : old),
+          );
+          setSaveStatus("All changes saved");
+          return saved;
+        } catch (error) {
+          setSaveStatus("Save failed · reload to retry");
+          notify((error as Error).message);
+          throw error;
+        }
+      });
     },
     [client, notify],
   );
@@ -170,41 +160,46 @@ export default function App() {
     mode === "integrated" &&
     authId &&
     new URLSearchParams(window.location.search).get("invite") === "1"
-  )
+  ) {
     return <InvitationSetup />;
-  if (mode === "integrated" && authReady && !authId)
+  }
+  if (mode === "integrated" && authReady && !authId) {
     return <Login onNotify={notify} />;
-  if (!snapshot)
+  }
+  if (!snapshot) {
     return (
       <div className="loading-screen">
         <Brand />
-        {query.error ? (
-          <>
-            <h2>Let's get your workspace connected</h2>
-            <p>{(query.error as Error).message}</p>
-            <button
-              className="button primary"
-              onClick={() => void query.refetch()}
-            >
-              Try again
-            </button>
-            {mode === "integrated" && (
+        {query.error
+          ? (
+            <>
+              <h2>Let's get your workspace connected</h2>
+              <p>{(query.error as Error).message}</p>
               <button
-                className="button secondary"
-                onClick={() => void supabase?.auth.signOut()}
+                className="button primary"
+                onClick={() => void query.refetch()}
               >
-                Sign out
+                Try again
               </button>
-            )}
-          </>
-        ) : (
-          <>
-            <LoaderCircle className="spin" size={28} />
-            <p>Making room for good work…</p>
-          </>
-        )}
+              {mode === "integrated" && (
+                <button
+                  className="button secondary"
+                  onClick={() => void supabase?.auth.signOut()}
+                >
+                  Sign out
+                </button>
+              )}
+            </>
+          )
+          : (
+            <>
+              <LoaderCircle className="spin" size={28} />
+              <p>Making room for good work…</p>
+            </>
+          )}
       </div>
     );
+  }
   const actor = snapshot.people.find((p) => p.id === snapshot.actorId)!;
   const employer = actor.accessRole === "employer";
   const workers = snapshot.people.filter((p) => p.accessRole === "worker");
@@ -217,16 +212,19 @@ export default function App() {
   const pendingReview = snapshot.projects.filter(
     (p) => p.state === "submitted",
   ).length;
-  const inProgress = snapshot.projects.filter((p) =>
-    ["in_progress", "changes_requested"].includes(p.state),
-  ).length;
+  const inProgress =
+    snapshot.projects.filter((p) =>
+      ["in_progress", "changes_requested"].includes(p.state)
+    ).length;
   const filteredWorkers = workers.filter((p) =>
-    `${p.name} ${p.role} ${snapshot.projects
-      .filter((x) => x.workerId === p.id)
-      .map((x) => x.title)
-      .join(" ")}`
+    `${p.name} ${p.role} ${
+      snapshot.projects
+        .filter((x) => x.workerId === p.id)
+        .map((x) => x.title)
+        .join(" ")
+    }`
       .toLowerCase()
-      .includes(search.toLowerCase()),
+      .includes(search.toLowerCase())
   );
   const selectedPerson = snapshot.people.find((p) => p.id === selected);
   return (
@@ -259,7 +257,7 @@ export default function App() {
               const p = snapshot.projects.find((p) =>
                 p.invoices.some(
                   (i) => i.state !== "paid" && i.paidMinor !== i.amountMinor,
-                ),
+                )
               );
               if (p) onSelect(p.workerId, "attention");
               else notify("You’re all caught up.");
@@ -287,48 +285,50 @@ export default function App() {
             ? "AI responses and payments are simulated. Your changes save in this browser."
             : "Authenticated workspace. Historical fixtures are labeled Sample data."}
         </span>
-        {mode === "demo" ? (
-          <div>
-            <label htmlFor="demo-actor">Viewing as</label>
-            <select
-              id="demo-actor"
-              aria-label="Demo viewing role"
-              value={actorId}
-              onChange={(e) => {
-                setDemoActor(e.target.value);
-                setActorId(e.target.value);
-                setSelected(null);
-                setSearch("");
-              }}
-            >
-              {Object.entries({
-                [IDS.myron]: "Myron · Employer",
-                [IDS.ava]: "Ava · Worker",
-                [IDS.leo]: "Leo · Worker",
-                [IDS.mia]: "Mia · Worker",
-                [IDS.nina]: "Nina · Worker",
-                [IDS.ethan]: "Ethan · Worker",
-                [IDS.sofia]: "Sofia · Worker",
-              }).map(([id, label]) => (
-                <option key={id} value={id}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            <button
-              title="Reset local demo"
-              aria-label="Reset local demo"
-              onClick={() => setResetOpen(true)}
-            >
-              <RotateCcw size={13} />
+        {mode === "demo"
+          ? (
+            <div>
+              <label htmlFor="demo-actor">Viewing as</label>
+              <select
+                id="demo-actor"
+                aria-label="Demo viewing role"
+                value={actorId}
+                onChange={(e) => {
+                  setDemoActor(e.target.value);
+                  setActorId(e.target.value);
+                  setSelected(null);
+                  setSearch("");
+                }}
+              >
+                {Object.entries({
+                  [IDS.myron]: "Myron · Employer",
+                  [IDS.ava]: "Jacob · Worker",
+                  [IDS.leo]: "Vincent · Worker",
+                  [IDS.mia]: "Jeshua · Worker",
+                  [IDS.nina]: "Myron Manago · Worker",
+                  [IDS.ethan]: "Ethan · Worker",
+                  [IDS.sofia]: "Eya · Worker",
+                }).map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <button
+                title="Reset local demo"
+                aria-label="Reset local demo"
+                onClick={() => setResetOpen(true)}
+              >
+                <RotateCcw size={13} />
+              </button>
+            </div>
+          )
+          : (
+            <button onClick={() => void supabase?.auth.signOut()}>
+              <LogOut size={13} />
+              Sign out
             </button>
-          </div>
-        ) : (
-          <button onClick={() => void supabase?.auth.signOut()}>
-            <LogOut size={13} />
-            Sign out
-          </button>
-        )}
+          )}
       </div>
       <div className="workspace-content">
         <aside className="sidebar">
@@ -394,8 +394,7 @@ export default function App() {
               <h1>
                 {employer
                   ? "Team workspace"
-                  : `Your work, ${actor.name.split(" ")[0]}.`}{" "}
-                <span>✦</span>
+                  : `Your work, ${actor.name.split(" ")[0]}.`} <span>✦</span>
               </h1>
               <p>
                 {employer
@@ -443,7 +442,7 @@ export default function App() {
               className="summary-item"
               onClick={() => {
                 const p = snapshot.projects.find((p) =>
-                  ["in_progress", "changes_requested"].includes(p.state),
+                  ["in_progress", "changes_requested"].includes(p.state)
                 );
                 if (p) onSelect(p.workerId);
               }}
@@ -528,91 +527,93 @@ export default function App() {
               <kbd>/</kbd>
             </div>
           </div>
-          {employer && view === "canvas" ? (
-            <Canvas
-              snapshot={snapshot}
-              onSelect={onSelect}
-              onSave={saveLayout}
-              saveStatus={saveStatus}
-              search={search}
-              onNotify={notify}
-              onInvite={() => setInvite(true)}
-              selectedPersonId={selected ?? undefined}
-            />
-          ) : (
-            <div className="people-list">
-              <div className="list-heading">
-                <h2>
-                  {employer
-                    ? "The people making it happen"
-                    : "Your project space"}
-                </h2>
-                <span>
-                  {filteredWorkers.length} {employer ? "members" : "member"}
-                </span>
-              </div>
-              <div className="people-grid">
-                {filteredWorkers.map((p) => (
-                  <div className="person-card" key={p.id}>
-                    <button
-                      className="person-card-main"
-                      onClick={() => onSelect(p.id)}
-                    >
-                      <Avatar person={p} size={60} />
-                      <div>
-                        <h3>{p.name}</h3>
-                        <p>{p.role}</p>
-                      </div>
-                      <ArrowUpRight size={18} />
-                    </button>
-                    <div className="card-projects">
-                      {snapshot.projects
-                        .filter((project) => project.workerId === p.id)
-                        .map((project) => (
-                          <button
-                            key={project.id}
-                            onClick={() => onSelect(p.id, "all", project.id)}
-                          >
-                            <span
-                              className={`project-dot state-${project.state}`}
-                            />
-                            {project.title}
-                            <ArrowRight size={12} />
-                          </button>
-                        ))}
-                    </div>
-                    <div className="person-card-footer">
-                      <span>
-                        {
-                          snapshot.projects.filter(
-                            (project) => project.workerId === p.id,
-                          ).length
-                        }{" "}
-                        projects
-                      </span>
-                      <StatusBadges
-                        projects={snapshot.projects}
-                        workerIds={[p.id]}
-                        today={today}
-                        onClick={(filter) => onSelect(p.id, filter)}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {!filteredWorkers.length && (
-                <div className="empty-state">
-                  <Search size={30} />
-                  <h3>No people or projects found</h3>
-                  <p>Try a name, role, or project title.</p>
+          {employer && view === "canvas"
+            ? (
+              <Canvas
+                snapshot={snapshot}
+                onSelect={onSelect}
+                onSave={saveLayout}
+                saveStatus={saveStatus}
+                search={search}
+                onNotify={notify}
+                onInvite={() => setInvite(true)}
+                selectedPersonId={selected ?? undefined}
+              />
+            )
+            : (
+              <div className="people-list">
+                <div className="list-heading">
+                  <h2>
+                    {employer
+                      ? "The people making it happen"
+                      : "Your project space"}
+                  </h2>
+                  <span>
+                    {filteredWorkers.length} {employer ? "members" : "member"}
+                  </span>
                 </div>
-              )}
-            </div>
-          )}
+                <div className="people-grid">
+                  {filteredWorkers.map((p) => (
+                    <div className="person-card" key={p.id}>
+                      <button
+                        className="person-card-main"
+                        onClick={() =>
+                          onSelect(p.id)}
+                      >
+                        <Avatar person={p} size={60} />
+                        <div>
+                          <h3>{p.name}</h3>
+                          <p>{p.role}</p>
+                        </div>
+                        <ArrowUpRight size={18} />
+                      </button>
+                      <div className="card-projects">
+                        {snapshot.projects
+                          .filter((project) =>
+                            project.workerId === p.id
+                          )
+                          .map((project) => (
+                            <button
+                              key={project.id}
+                              onClick={() => onSelect(p.id, "all", project.id)}
+                            >
+                              <span
+                                className={`project-dot state-${project.state}`}
+                              />
+                              {project.title}
+                              <ArrowRight size={12} />
+                            </button>
+                          ))}
+                      </div>
+                      <div className="person-card-footer">
+                        <span>
+                          {snapshot.projects.filter(
+                            (project) => project.workerId === p.id,
+                          ).length} projects
+                        </span>
+                        <StatusBadges
+                          projects={snapshot.projects}
+                          workerIds={[p.id]}
+                          today={today}
+                          onClick={(filter) => onSelect(p.id, filter)}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {!filteredWorkers.length && (
+                  <div className="empty-state">
+                    <Search size={30} />
+                    <h3>No people or projects found</h3>
+                    <p>Try a name, role, or project title.</p>
+                  </div>
+                )}
+              </div>
+            )}
           <footer className="workspace-footer">
             <span>
-              <span className="footer-spark">✦</span> A little structure. A lot
-              of possibility.
+              <span className="footer-spark">✦</span>{" "}
+              A little structure. A lot of possibility.
             </span>
             <span>Made for the way creative teams work.</span>
           </footer>
@@ -633,11 +634,12 @@ export default function App() {
               mode === "demo"
                 ? "Simulated invoice created. No transaction occurred."
                 : "Sandbox invoice created and sent.",
-            )
-          }
+            )}
           onRefresh={(id) =>
-            run(() => payments.reconcile(id), "Invoice reconciled with PayPal.")
-          }
+            run(
+              () => payments.reconcile(id),
+              "Invoice reconciled with PayPal.",
+            )}
           busy={busy}
           onNotify={notify}
         />
@@ -669,6 +671,7 @@ export default function App() {
               className="button primary"
               onClick={() => {
                 resetDemo();
+                saveQueue.current.reset();
                 setActorId(IDS.myron);
                 setSelected(null);
                 setResetOpen(false);
@@ -906,65 +909,67 @@ function Login({ onNotify }: { onNotify: (s: string) => void }) {
           {invite ? "Make yourself at home." : "Welcome back to your canvas."}
         </h1>
         <p>Clear agreements. Connected people. Room to create.</p>
-        {!supabase ? (
-          <div className="info-note">
-            Integrated mode requires VITE_SUPABASE_URL and
-            VITE_SUPABASE_PUBLISHABLE_KEY. Add them to .env and restart the
-            application.
-          </div>
-        ) : (
-          <form
-            className="stacked-form"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              setBusy(true);
-              setError("");
-              try {
-                const { error } = await supabase!.auth.signInWithPassword({
-                  email,
-                  password,
-                });
-                if (error) throw error;
-                onNotify("Welcome back.");
-              } catch (e) {
-                setError((e as Error).message);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <label>
-              Email address
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="username"
-                required
-              />
-            </label>
-            <label>
-              Password
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                required
-                minLength={8}
-              />
-            </label>
-            {error && (
-              <p role="alert" className="error-message">
-                {error}
-              </p>
-            )}
-            <button className="button primary" disabled={busy}>
-              Open your workspace
-              <ArrowRight size={16} />
-            </button>
-          </form>
-        )}
+        {!supabase
+          ? (
+            <div className="info-note">
+              Integrated mode requires VITE_SUPABASE_URL and
+              VITE_SUPABASE_PUBLISHABLE_KEY. Add them to .env and restart the
+              application.
+            </div>
+          )
+          : (
+            <form
+              className="stacked-form"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setBusy(true);
+                setError("");
+                try {
+                  const { error } = await supabase!.auth.signInWithPassword({
+                    email,
+                    password,
+                  });
+                  if (error) throw error;
+                  onNotify("Welcome back.");
+                } catch (e) {
+                  setError((e as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <label>
+                Email address
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="username"
+                  required
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                  minLength={8}
+                />
+              </label>
+              {error && (
+                <p role="alert" className="error-message">
+                  {error}
+                </p>
+              )}
+              <button className="button primary" disabled={busy}>
+                Open your workspace
+                <ArrowRight size={16} />
+              </button>
+            </form>
+          )}
         <small>Authenticated workspace · PayPal sandbox only</small>
       </div>
       <span className="login-footer">

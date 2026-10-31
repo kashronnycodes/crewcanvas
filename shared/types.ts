@@ -54,6 +54,8 @@ export interface Delivery {
   id: string;
   agreementId: string;
   url: string;
+  fileId?: string;
+  fileVersion?: number;
   label: string;
   note: string;
   submittedAt: string;
@@ -126,6 +128,7 @@ export interface Invoice {
   error?: string;
 }
 export interface Activity {
+  projectId?: string | null;
   id: string;
   actorId: string;
   text: string;
@@ -167,9 +170,20 @@ export interface CanvasLayout {
   version: number;
   groups: LayoutGroup[];
   people: LayoutPerson[];
+  cards?: {
+    id: string;
+    x: number;
+    y: number;
+    width?: number;
+    height?: number;
+  }[];
+  connections?: { id: string; source: string; target: string }[];
   viewport: { x: number; y: number; zoom: number };
 }
 export interface WorkspaceSnapshot {
+  files?: WorkspaceFile[];
+  workspaceActivity?: Activity[];
+  demoRosterVersion?: number;
   id: string;
   name: string;
   timezone: string;
@@ -178,6 +192,41 @@ export interface WorkspaceSnapshot {
   layout: CanvasLayout;
   sellerConnectionId: string;
   actorId: string;
+}
+export interface FileVersion {
+  path: string;
+  name: string;
+  mime: string;
+  size: number;
+  createdAt: string;
+}
+export interface WorkspaceFile {
+  id: string;
+  workspaceId: string;
+  projectId: string | null;
+  uploadedBy: string;
+  name: string;
+  mime: string;
+  size: number;
+  x: number;
+  y: number;
+  version: number;
+  versions: FileVersion[];
+  createdAt: string;
+  updatedAt: string;
+}
+export type WorkspaceIntent =
+  | "payments"
+  | "progress"
+  | "organize"
+  | "overdue"
+  | "spending"
+  | "help";
+export interface WorkspaceAnswer {
+  intent: WorkspaceIntent;
+  text: string;
+  highlight: string[];
+  mode: "live" | "demo";
 }
 export interface SessionActor {
   id: string;

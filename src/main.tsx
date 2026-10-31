@@ -10,6 +10,7 @@ import "@fontsource/jetbrains-mono/latin-400.css";
 import "./styles.css";
 import "./design-tokens.css";
 import "./redesign.css";
+import "./workspace.css";
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 10_000 } },
 });

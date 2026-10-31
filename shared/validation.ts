@@ -51,13 +51,17 @@ export const briefOutputSchema = z
   })
   .strict();
 export const driveUrlSchema = z.url().refine((value) => {
-  const url = new URL(value);
-  return (
-    url.protocol === "https:" &&
-    ["drive.google.com", "docs.google.com"].includes(url.hostname) &&
-    !url.username &&
-    !url.password
-  );
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      ["drive.google.com", "docs.google.com"].includes(url.hostname) &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
 }, "Use an HTTPS Google Drive or Google Docs link.");
 export const commandSchema = z.discriminatedUnion("type", [
   z
@@ -89,6 +93,16 @@ export const commandSchema = z.discriminatedUnion("type", [
       type: z.literal("submitDelivery"),
       projectId: id,
       url: driveUrlSchema,
+      label: z.string().trim().min(1).max(80),
+      note: z.string().max(3000),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("submitFileDelivery"),
+      projectId: id,
+      fileId: id,
+      fileVersion: z.number().int().min(0),
       label: z.string().trim().min(1).max(80),
       note: z.string().max(3000),
     })
@@ -190,6 +204,19 @@ export const layoutSchema = z
         }),
       )
       .max(200),
+    cards: z.array(
+      z.object({
+        id: z.string().min(1).max(100),
+        x: z.number().finite(),
+        y: z.number().finite(),
+        width: z.number().min(220).max(800).optional(),
+        height: z.number().min(160).max(800).optional(),
+      }).strict(),
+    ).max(2000).optional(),
+    connections: z.array(
+      z.object({ id, source: z.string().max(100), target: z.string().max(100) })
+        .strict(),
+    ).max(4000).optional(),
     viewport: z.object({
       x: z.number().finite(),
       y: z.number().finite(),
@@ -198,10 +225,14 @@ export const layoutSchema = z
   })
   .strict()
   .superRefine((layout, ctx) => {
-    const ids = [...layout.groups, ...layout.people].map((x) => x.id);
-    if (new Set(ids).size !== ids.length)
+    const ids = [...layout.groups, ...layout.people, ...(layout.cards ?? [])]
+      .map((x) => x.id);
+    if (new Set(ids).size !== ids.length) {
       ctx.addIssue({ code: "custom", message: "Layout nodes must be unique." });
-    for (const p of layout.people)
-      if (p.groupId && !layout.groups.some((g) => g.id === p.groupId))
+    }
+    for (const p of layout.people) {
+      if (p.groupId && !layout.groups.some((g) => g.id === p.groupId)) {
         ctx.addIssue({ code: "custom", message: "Unknown group." });
+      }
+    }
   });

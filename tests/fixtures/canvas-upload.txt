@@ -1,0 +1,1 @@
+CrewCanvas durable file upload fixture. Safe local test content.

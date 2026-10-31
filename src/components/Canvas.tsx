@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
   Handle,
+  type Node,
+  type NodeChange,
+  type NodeProps,
   Position,
   ReactFlow,
   ReactFlowProvider,
+  useNodesInitialized,
   useReactFlow,
-  type Node,
-  type NodeProps,
-  type NodeChange,
 } from "@xyflow/react";
 import {
   AlertCircle,
@@ -18,12 +19,12 @@ import {
   ChevronUp,
   Expand,
   Hand,
-  MousePointer2,
-  Plus,
   Minus,
-  Users,
   MoreHorizontal,
+  MousePointer2,
   Pencil,
+  Plus,
+  Users,
   X,
 } from "lucide-react";
 import "@xyflow/react/dist/style.css";
@@ -33,10 +34,16 @@ import type {
   Project,
   WorkspaceSnapshot,
 } from "../../shared/types";
-import { indicators, reparent, uid, todayIn } from "../../shared/domain";
+import { indicators, reparent, todayIn, uid } from "../../shared/domain";
 import Avatar from "./Avatar";
+import {
+  useWorkspaceCanvas,
+  WorkCard,
+  type WorkCardData,
+} from "./IntelligentCanvas";
 type Filter = "all" | "attention" | "completed";
 type MapData = {
+  work?: WorkCardData;
   person?: Person;
   projects: Project[];
   people: Person[];
@@ -66,7 +73,9 @@ export function StatusBadges({
       {counts.attention > 0 && (
         <button
           className="status-badge red nodrag"
-          title={`${counts.attention} project${counts.attention > 1 ? "s" : ""} need payment attention`}
+          title={`${counts.attention} project${
+            counts.attention > 1 ? "s" : ""
+          } need payment attention`}
           aria-label={`${counts.attention} projects need payment attention`}
           onClick={(e) => {
             e.stopPropagation();
@@ -80,7 +89,9 @@ export function StatusBadges({
       {counts.completed > 0 && (
         <button
           className="status-badge green nodrag"
-          title={`${counts.completed} accepted project${counts.completed > 1 ? "s" : ""}`}
+          title={`${counts.completed} accepted project${
+            counts.completed > 1 ? "s" : ""
+          }`}
           aria-label={`${counts.completed} accepted projects`}
           onClick={(e) => {
             e.stopPropagation();
@@ -116,9 +127,7 @@ function PersonNode({ data }: NodeProps<MapNode>) {
         <strong>{p.name}</strong>
         <span className="person-role">{p.role}</span>
       </button>
-      {lead ? (
-        <span className="lead-tag">WORKSPACE OWNER</span>
-      ) : (
+      {lead ? <span className="lead-tag">WORKSPACE OWNER</span> : (
         <>
           <span className="person-projects">
             {own.length} {own.length === 1 ? "project" : "projects"}
@@ -126,8 +135,8 @@ function PersonNode({ data }: NodeProps<MapNode>) {
             {own.some((x) => x.state === "submitted")
               ? "Review ready"
               : own.some((x) => x.state === "accepted")
-                ? "Work accepted"
-                : "In progress"}
+              ? "Work accepted"
+              : "In progress"}
           </span>
           <StatusBadges
             projects={data.projects}
@@ -193,7 +202,9 @@ function GroupNode({ data }: NodeProps<MapNode>) {
             <span>View team</span>
             <StatusBadges
               projects={data.projects}
-              workerIds={data.people.map((p) => p.id)}
+              workerIds={data.people.map((p) =>
+                p.id
+              )}
               today={data.today}
               onClick={(filter) => data.onMembers?.(filter)}
             />
@@ -203,7 +214,7 @@ function GroupNode({ data }: NodeProps<MapNode>) {
     </div>
   );
 }
-const nodeTypes = { person: PersonNode, group: GroupNode };
+const nodeTypes = { person: PersonNode, group: GroupNode, work: WorkCard };
 function Map({
   snapshot,
   onSelect,
@@ -215,7 +226,7 @@ function Map({
   selectedPersonId,
 }: {
   snapshot: WorkspaceSnapshot;
-  onSelect: (id: string, filter?: Filter) => void;
+  onSelect: (id: string, filter?: Filter, projectId?: string) => void;
   onSave: (layout: CanvasLayout) => Promise<CanvasLayout>;
   saveStatus: string;
   search: string;
@@ -231,19 +242,50 @@ function Map({
   const [groupMembers, setGroupMembers] = useState<string | null>(null);
   const [groupFilter, setGroupFilter] = useState<Filter>("all");
   const flow = useReactFlow();
+  const pendingWrites = useRef(0), generation = useRef(0);
+  const initialized = useNodesInitialized(),
+    initialViewSet = useRef(snapshot.layout.version !== 0);
   useEffect(() => {
-    setLayout(snapshot.layout);
+    if (!pendingWrites.current) setLayout(snapshot.layout);
   }, [snapshot.layout]);
   const persist = useCallback(
     (next: CanvasLayout) => {
       setLayout(next);
+      pendingWrites.current++;
+      const token = ++generation.current;
       void onSave(next)
-        .then(setLayout)
-        .catch(() => {});
+        .then((saved) => {
+          if (token === generation.current) setLayout(saved);
+        })
+        .catch(() => {})
+        .finally(() => pendingWrites.current--);
     },
     [onSave],
   );
   const today = todayIn(snapshot.timezone);
+  const workspace = useWorkspaceCanvas({
+    snapshot,
+    layout,
+    persist,
+    flow,
+    onSelect,
+    onNotify,
+  });
+  useEffect(() => {
+    if (!initialized || initialViewSet.current) return;
+    initialViewSet.current = true;
+    void flow.fitView({
+      nodes: [
+        { id: `task:${snapshot.projects[0]?.id}` },
+        { id: `payment:${snapshot.projects[0]?.id}` },
+        ...(snapshot.projects[0]?.deliveries.map((d) => ({
+          id: `delivery:${d.id}`,
+        })) ?? []),
+      ],
+      padding: 0.3,
+      maxZoom: 0.9,
+    });
+  }, [initialized, flow, snapshot.projects]);
   const nodes: MapNode[] = useMemo(() => {
     const groups: MapNode[] = layout.groups.map((g) => ({
       id: g.id,
@@ -258,7 +300,7 @@ function Map({
         collapsed: g.collapsed,
         projects: snapshot.projects,
         people: snapshot.people.filter((p) =>
-          layout.people.some((l) => l.id === p.id && l.groupId === g.id),
+          layout.people.some((l) => l.id === p.id && l.groupId === g.id)
         ),
         today,
         onSelect,
@@ -266,7 +308,7 @@ function Map({
           persist({
             ...layout,
             groups: layout.groups.map((x) =>
-              x.id === g.id ? { ...x, collapsed: !x.collapsed } : x,
+              x.id === g.id ? { ...x, collapsed: !x.collapsed } : x
             ),
           }),
         onRename: () => {
@@ -282,8 +324,7 @@ function Map({
     const persons: MapNode[] = layout.people.flatMap((position) => {
       const person = snapshot.people.find((p) => p.id === position.id);
       if (!person) return [];
-      const hidden =
-        !!position.groupId &&
+      const hidden = !!position.groupId &&
         !!layout.groups.find((g) => g.id === position.groupId)?.collapsed;
       return [
         {
@@ -295,29 +336,43 @@ function Map({
           hidden,
           style: {
             width: 170,
-            opacity:
-              search &&
-              !`${person.name} ${person.role} ${snapshot.projects
-                .filter((p) => p.workerId === person.id)
-                .map((p) => p.title)
-                .join(" ")}`
-                .toLowerCase()
-                .includes(search.toLowerCase()) &&
-              person.accessRole !== "employer"
-                ? 0.24
-                : 1,
+            opacity: search &&
+                !`${person.name} ${person.role} ${
+                  snapshot.projects
+                    .filter((p) => p.workerId === person.id)
+                    .map((p) => p.title)
+                    .join(" ")
+                }`
+                  .toLowerCase()
+                  .includes(search.toLowerCase()) &&
+                person.accessRole !== "employer"
+              ? 0.24
+              : 1,
           },
           data: {
             person,
             people: snapshot.people,
             projects: snapshot.projects,
             today,
-            onSelect,
+            onSelect: workspace.selectPerson,
           },
         },
       ];
     });
-    return [...groups, ...persons];
+    return [
+      ...groups,
+      ...persons,
+      ...workspace.workNodes.map((n) => ({
+        ...n,
+        data: {
+          ...n.data,
+          projects: snapshot.projects,
+          people: snapshot.people,
+          today,
+          onSelect,
+        },
+      })),
+    ];
   }, [
     layout,
     snapshot.people,
@@ -327,6 +382,7 @@ function Map({
     search,
     today,
     selectedPersonId,
+    workspace.workNodes,
   ]);
   const edges = useMemo(() => {
     const employer = snapshot.people.find((p) => p.accessRole === "employer")!;
@@ -342,8 +398,7 @@ function Map({
           id: `link-${p.id}`,
           source: p.groupId ?? employer.id,
           target: p.id,
-          hidden:
-            !!p.groupId &&
+          hidden: !!p.groupId &&
             !!layout.groups.find((g) => g.id === p.groupId)?.collapsed,
         })),
     ].map((e) => ({
@@ -356,19 +411,44 @@ function Map({
   function changed(changes: NodeChange<MapNode>[]) {
     setLayout((current) => {
       let next = current;
-      for (const change of changes)
+      for (const change of changes) {
         if (change.type === "position" && change.position) {
           const { x, y } = change.position;
           next = {
             ...next,
             people: next.people.map((p) =>
-              p.id === change.id ? { ...p, x, y } : p,
+              p.id === change.id ? { ...p, x, y } : p
             ),
             groups: next.groups.map((g) =>
-              g.id === change.id ? { ...g, x, y } : g,
+              g.id === change.id ? { ...g, x, y } : g
             ),
+            cards: workspace.workNodes.some((n) => n.id === change.id)
+              ? [...(next.cards ?? []).filter((c) => c.id !== change.id), {
+                ...next.cards?.find((c) => c.id === change.id),
+                id: change.id,
+                x,
+                y,
+              }]
+              : next.cards,
           };
+        } else if (
+          change.type === "dimensions" && change.resizing && change.dimensions
+        ) {
+          const node = workspace.workNodes.find((n) => n.id === change.id);
+          if (node?.data.work.kind === "file") {
+            next = {
+              ...next,
+              cards: [...(next.cards ?? []).filter((c) => c.id !== change.id), {
+                id: change.id,
+                ...node.position,
+                ...next.cards?.find((c) => c.id === change.id),
+                width: change.dimensions.width,
+                height: change.dimensions.height,
+              }],
+            };
+          }
         }
+      }
       return next;
     });
   }
@@ -398,45 +478,72 @@ function Map({
       layout.people.some((x) => x.id === p.id && x.groupId === groupMembers) &&
       (groupFilter === "all" ||
         indicators(snapshot.projects, [p.id], today)[
-          groupFilter === "attention" ? "attention" : "completed"
-        ] > 0),
+            groupFilter === "attention" ? "attention" : "completed"
+          ] > 0),
   );
   return (
-    <div className="canvas-container">
+    <div
+      className="canvas-container"
+      ref={workspace.container}
+      onDrop={workspace.drop}
+      onDragOver={workspace.dragOver}
+      onDragLeave={workspace.dragLeave}
+      onKeyUp={(e) => {
+        if (
+          ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) &&
+          e.target instanceof Element && e.target.closest(".react-flow__node")
+        ) persist(layout);
+      }}
+    >
       <ReactFlow<MapNode>
-        nodes={nodes}
-        edges={edges}
+        nodes={nodes.map((n) =>
+          n.type === "work" ? n : {
+            ...n,
+            style: {
+              ...n.style,
+              opacity: Math.min(
+                Number(n.style?.opacity ?? 1),
+                workspace.opacity(n.id),
+              ),
+            },
+          }
+        )}
+        edges={[...edges, ...workspace.workEdges]}
         nodeTypes={nodeTypes}
         onNodesChange={changed}
+        onConnect={workspace.connect}
+        onNodeClick={(event, node) => workspace.inspect(node.id, event)}
+        onEdgeClick={(_, edge) => workspace.edgeClick(edge)}
+        onPaneClick={workspace.paneClick}
         onNodeDragStop={(_, node) => {
           const next = {
             ...layout,
             people: layout.people.map((p) =>
-              p.id === node.id ? { ...p, ...node.position } : p,
+              p.id === node.id ? { ...p, ...node.position } : p
             ),
             groups: layout.groups.map((g) =>
-              g.id === node.id ? { ...g, ...node.position } : g,
+              g.id === node.id ? { ...g, ...node.position } : g
             ),
+            cards: node.type === "work"
+              ? [...(layout.cards ?? []).filter((c) => c.id !== node.id), {
+                ...layout.cards?.find((c) => c.id === node.id),
+                id: node.id,
+                ...node.position,
+              }]
+              : layout.cards,
           };
           persist(next);
         }}
         onMoveEnd={(_, viewport) => {
-          persist({ ...layout, viewport });
+          if (initialViewSet.current) persist({ ...layout, viewport });
         }}
         defaultViewport={snapshot.layout.viewport}
-        onInit={(instance) => {
-          if (snapshot.layout.version === 0)
-            setTimeout(
-              () => void instance.fitView({ padding: 0.2, maxZoom: 1 }),
-              50,
-            );
-        }}
-        fitView={snapshot.layout.version === 0}
+        fitView={false}
         minZoom={0.2}
         maxZoom={1.8}
         panOnDrag={pan ? true : [1, 2]}
         selectionOnDrag={!pan}
-        nodesConnectable={false}
+        nodesConnectable
         deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}
       >
@@ -444,9 +551,10 @@ function Map({
           variant={BackgroundVariant.Dots}
           gap={22}
           size={1.25}
-          color="#303633"
+          color="#d6dcd8"
         />
       </ReactFlow>
+      {workspace.ui}
       <div className="canvas-hint">
         <span className="live-dot" /> Your team, connected{" "}
         <span>Drag to make it yours</span>
@@ -546,9 +654,9 @@ function Map({
           className="canvas-dialog"
           role="dialog"
           aria-modal="true"
-          aria-label={
-            groupEditor === "new" ? "Create role group" : "Rename role group"
-          }
+          aria-label={groupEditor === "new"
+            ? "Create role group"
+            : "Rename role group"}
         >
           <div>
             <h3>
@@ -567,7 +675,7 @@ function Map({
                     groups: layout.groups.map((g) =>
                       g.id === groupEditor
                         ? { ...g, name: name.trim() || g.name }
-                        : g,
+                        : g
                     ),
                   });
                   setGroupEditor(null);
@@ -625,43 +733,41 @@ function Map({
             </p>
             {(groupMembers === "all"
               ? snapshot.people.filter((p) => p.accessRole === "worker")
-              : members
-            ).map((p) => (
-              <div className="member-row" key={p.id}>
-                <button
-                  onClick={() => {
-                    onSelect(p.id, groupFilter);
-                    setGroupMembers(null);
-                  }}
-                >
-                  <Avatar person={p} size={36} />
-                  <span>
-                    <strong>{p.name}</strong>
-                    <small>{p.role}</small>
-                  </span>
-                </button>
-                <select
-                  aria-label={`Group for ${p.name}`}
-                  value={
-                    layout.people.find((x) => x.id === p.id)?.groupId ?? ""
-                  }
-                  onChange={(e) => {
-                    try {
-                      persist(reparent(layout, p.id, e.target.value || null));
-                    } catch (error) {
-                      onNotify((error as Error).message);
-                    }
-                  }}
-                >
-                  <option value="">Ungrouped</option>
-                  {layout.groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ))}
+              : members).map((p) => (
+                <div className="member-row" key={p.id}>
+                  <button
+                    onClick={() => {
+                      onSelect(p.id, groupFilter);
+                      setGroupMembers(null);
+                    }}
+                  >
+                    <Avatar person={p} size={36} />
+                    <span>
+                      <strong>{p.name}</strong>
+                      <small>{p.role}</small>
+                    </span>
+                  </button>
+                  <select
+                    aria-label={`Group for ${p.name}`}
+                    value={layout.people.find((x) => x.id === p.id)?.groupId ??
+                      ""}
+                    onChange={(e) => {
+                      try {
+                        persist(reparent(layout, p.id, e.target.value || null));
+                      } catch (error) {
+                        onNotify((error as Error).message);
+                      }
+                    }}
+                  >
+                    <option value="">Ungrouped</option>
+                    {layout.groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
           </div>
         </div>
       )}

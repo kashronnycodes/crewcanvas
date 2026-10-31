@@ -59,7 +59,7 @@ body .workspace-footer { display: none; }
 body .avatar { filter: grayscale(1); background: #373c3a !important; }
 body .avatar-frame { border: 1px solid var(--line-strong); padding: 4px; background: var(--canvas); }
 body .avatar-frame .avatar { opacity: .85; }
-body .person-open { color: var(--text); cursor: grab; }
+body .person-open { color: var(--text); cursor: grab; max-width: 170px; }
 body .person-open strong { font: 500 16px/1.5 var(--font-sans); color: var(--text); }
 body .person-role { font-size: 12px; color: var(--secondary); }
 body .person-projects { font: 10px var(--font-mono); color: var(--secondary); }
