@@ -24,7 +24,11 @@ import {
   snapshot,
 } from "../_shared/backend.ts";
 import { compareRevision, extractBrief } from "../_shared/ai.ts";
-import { issueInvoice, reconcileProject } from "../_shared/paypal.ts";
+import {
+  issueInvoice,
+  reconcileProject,
+  verifySandboxCredentials,
+} from "../_shared/paypal.ts";
 import {
   authorizedFile,
   fileUrl,
@@ -77,6 +81,17 @@ export async function handler(req: Request): Promise<Response> {
       return respond(req, await uploadFile(req, user));
     }
     const input = await body(req);
+    if (path === "payments/verify-configuration") {
+      if (user.role !== "employer") {
+        throw new HttpError(
+          403,
+          "FORBIDDEN",
+          "Only the workspace owner can verify provider configuration.",
+        );
+      }
+      z.object({}).strict().parse(input);
+      return respond(req, await verifySandboxCredentials());
+    }
     if (path === "members/update") {
       if (user.role !== "employer") {
         throw new HttpError(

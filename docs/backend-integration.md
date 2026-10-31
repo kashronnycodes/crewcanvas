@@ -21,7 +21,7 @@
 | Work | Assigned project agreements, included tasks, delivery/revision/approval cycle | Task cards represent project-level agreed work; independent per-line-item assignees/statuses are not implemented |
 | Files | Private bucket, server-authorized uploads, immutable version history, signed downloads | Large/resumable uploads, virus scanning and Office previews remain out of scope |
 | Activity | Durable project/file/workspace events; recipient-specific unread/read notifications | Fifteen-second polling is used; no Realtime subscription is required |
-| PayPal | Sandbox-only invoicing adapter, normalized settlement, idempotent verified webhook inbox, transaction records | REST seller credentials, seller membership mapping, real payment/signature round trip, retry schedule |
+| PayPal | Real Sandbox OAuth authentication verified; invoicing adapter, normalized settlement, idempotent verified webhook inbox, transaction records | Merchant/payer/webhook settings, seller membership mapping, real payment/signature round trip, retry schedule |
 | AI | Real server-side Responses integration, brief/scope analysis and contextual summaries; bounded authorized context and validated IDs | `OPENAI_API_KEY`, model access, live evaluation and output-quality checks |
 | Deployment | Integrated local environment and protected Vercel preview; production unchanged | Provider gates, manual UI rehearsal and explicit production approval |
 
@@ -124,6 +124,8 @@ creates clearly labeled test accounts/workspaces and retains fixtures without de
 Passwords/tokens stay in process memory. Non-secret evidence is written to ignored
 `.supabase/integration-results.json`. The normal regression suite stays deterministic even if
 the developer's `.env.local` uses integrated mode.
+`npm run test:paypal-config` uses only those labeled test accounts to check owner-only access and
+actual Sandbox OAuth authentication. It never creates an invoice or payment and never returns a provider token.
 
 ## Verification and limitations
 
@@ -140,6 +142,10 @@ the developer's `.env.local` uses integrated mode.
 - The live workflow reloads database snapshots throughout; it is an API/storage integration test,
   not an authenticated browser end-to-end test. The integrated sign-in page was visually checked.
   Full authenticated browser rehearsal and real confirmation-email delivery remain manual gates.
+- The configured `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` successfully authenticated against the
+  real Sandbox OAuth endpoint. The worker was denied the owner-only configuration check. No invoice
+  or payment was created by this test. Missing provider secrets at handoff: `OPENAI_API_KEY`,
+  `PAYPAL_MERCHANT_ID`, `PAYPAL_SELLER_EMAIL`, `PAYPAL_PAYER_EMAIL`, `PAYPAL_WEBHOOK_ID`.
 - The security advisor reports no database policy errors. It does flag disabled leaked-password
   protection in hosted Auth. Review [Supabase's remediation](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection)
   and plan availability before public production rollout. Email confirmation remains enabled.
