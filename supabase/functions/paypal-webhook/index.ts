@@ -9,6 +9,7 @@ import {
   respond,
 } from "../_shared/backend.ts";
 import { paypal, processWebhookEvent } from "../_shared/paypal.ts";
+import { webhookVerification } from "../../../shared/webhook-verification.ts";
 const eventSchema = z
   .object({
     id: z.string().min(1).max(100),
@@ -23,17 +24,14 @@ export async function handler(req: Request): Promise<Response> {
   try {
     const raw = await body(req);
     const event = eventSchema.parse(raw);
+    const payload = webhookVerification(req.headers, "header-check", raw);
+    if (!payload) {
+      throw new HttpError(400, "BAD_SIGNATURE", "PayPal signature headers are required.");
+    }
+    payload.webhook_id = env("PAYPAL_WEBHOOK_ID");
     const verification = await paypal(
       "/v1/notifications/verify-webhook-signature",
-      {
-        auth_algo: req.headers.get("paypal-auth-algo"),
-        cert_url: req.headers.get("paypal-cert-url"),
-        transmission_id: req.headers.get("paypal-transmission-id"),
-        transmission_sig: req.headers.get("paypal-transmission-sig"),
-        transmission_time: req.headers.get("paypal-transmission-time"),
-        webhook_id: Deno.env.get("PAYPAL_WEBHOOK_ID"),
-        webhook_event: raw,
-      },
+      payload,
     );
     if (verification.verification_status !== "SUCCESS") {
       throw new HttpError(

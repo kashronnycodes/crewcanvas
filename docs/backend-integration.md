@@ -14,15 +14,15 @@
 | Area | Implemented / verified | Remaining gate |
 |---|---|---|
 | Account isolation | Separate named credential entry and repo-local CLI state; identity/project guard | Teammates need their own authorized organization membership |
-| Database | Existing relational/JSON contracts retained; four migrations applied | Future schema changes follow reviewed migrations |
+| Database | Existing relational/JSON contracts retained; six migrations applied | Future schema changes follow reviewed migrations |
 | Auth | Signup, confirmation redirect, password sign-in, persisted sessions, sign-out, membership-based roles | Real inbox delivery and a user's signup confirmation still need a manual rehearsal |
 | Workspaces | Creation, list/selection, persistent layout, settings; one account can have several memberships | Workspace deletion and member removal are intentionally not exposed |
 | Team | Seven-day email-bound invitations, existing/new accounts, member name/creative-role editing | Invitation links are manually shared; no custom email sender |
 | Work | Assigned project agreements, included tasks, delivery/revision/approval cycle | Task cards represent project-level agreed work; independent per-line-item assignees/statuses are not implemented |
 | Files | Private bucket, server-authorized uploads, immutable version history, signed downloads | Large/resumable uploads, virus scanning and Office previews remain out of scope |
 | Activity | Durable project/file/workspace events; recipient-specific unread/read notifications | Fifteen-second polling is used; no Realtime subscription is required |
-| PayPal | Real Sandbox OAuth authentication verified; invoicing adapter, normalized settlement, idempotent verified webhook inbox, transaction records | Merchant/payer/webhook settings, seller membership mapping, real payment/signature round trip, retry schedule |
-| AI | Real server-side Responses integration, brief/scope analysis and contextual summaries; bounded authorized context and validated IDs | `OPENAI_API_KEY`, model access, live evaluation and output-quality checks |
+| PayPal | Sandbox OAuth verified; synthetic correction/addition/approval passed at USD 1.25; public webhook reachable; minute reconciliation returning HTTP 200 | Registered webhook ID, seller mapping, real Sandbox invoice/payment and signed event round trip |
+| AI | Responses integration, bounded authorized context and validated IDs; provider failures safely classified | Configured API key reports `credit_balance_exhausted` / `insufficient_quota`; funded API project and live output evaluation needed |
 | Deployment | Integrated local environment and protected Vercel preview; production unchanged | Provider gates, manual UI rehearsal and explicit production approval |
 
 ## Applied migration history
@@ -36,6 +36,10 @@
 4. `20261031153517_verified_auth_identity.sql`: narrowly restricted private verified-email helper.
    Real Supabase `service_role` cannot read `auth.users` directly; onboarding uses this helper
    without granting broad access to the Auth schema. The regression tests now use `service_role`.
+5. `20261031164710_vault_reconciliation_setup.sql`: restricted setup RPC for one fixed-project
+   pg_cron/pg_net job, with encrypted Vault authentication and conflicting configuration refused.
+6. `20261031165542_service_role_auth.sql`: verify effective server database role rather than
+   compare different valid opaque API keys; enforce one membership per Sandbox merchant.
 
 Migrations were dry-run before application. No existing user data was reset or deleted.
 All 13 public application tables and nine private tables have RLS enabled.
@@ -66,7 +70,7 @@ payment reconciliation also writes project activity. Inbox reads and acknowledge
 |---|---|---|
 | `crew-api` | Workspace onboarding/settings, membership checks, project commands, layout, invitations, notifications, files, AI and invoice requests | Platform JWT verification plus `auth.getUser` and database membership checks |
 | `paypal-webhook` | Verify PayPal signature, durably deduplicate the event, queue/reconcile provider state | PayPal postback signature verification; no browser success flag |
-| `reconcile` | Retry durable webhook events and refresh bounded invoice records | Server service key on `apikey`; never a browser key |
+| `reconcile` | Retry durable webhook events and refresh bounded invoice records; restricted provider setup/diagnostics | Server key on `apikey`, verified by a service-role-only database RPC; public keys rejected |
 
 The API keeps optimistic versions, immutable accepted terms, integer cents, idempotency keys,
 charge allocations and invoice leases. AI has no mutation or money tools. Financial totals remain
@@ -81,8 +85,8 @@ Provider failures never fall back to fake successful invoices or hardcoded live 
 | Future Vercel Production browser build, after approval | Same public variables; currently production remains demo |
 | Supabase function secrets | `ALLOWED_ORIGIN`, optional comma-separated exact `ALLOWED_ORIGINS`, `OPENAI_API_KEY`, optional `OPENAI_MODEL`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MERCHANT_ID`, `PAYPAL_SELLER_EMAIL`, `PAYPAL_PAYER_EMAIL`, `PAYPAL_WEBHOOK_ID` |
 | Supabase-provided runtime values | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`; never copy these into `VITE_` variables |
-| Owner seller-setup shell only | `CREW_SELLER_MEMBERSHIP_ID`, `PAYPAL_MERCHANT_ID`, `PAYPAL_SELLER_EMAIL` |
-| Retry scheduler / Vault | `crewcanvas_project_url`, `crewcanvas_service_key`; see `docs/schedule.sql` |
+| Owner seller-setup shell only | `CREW_SELLER_MEMBERSHIP_ID`; `setup:paypal` reads provider settings inside the backend |
+| Retry scheduler / Vault | `crewcanvas_project_url`, `crewcanvas_service_key`; configured with `npm run setup:reconcile` |
 
 Only public browser configuration is stored in ignored `.env.local`. Server keys used by setup/test
 scripts are retrieved through the isolated CLI into memory and never written to source or logs.
@@ -127,11 +131,34 @@ the developer's `.env.local` uses integrated mode.
 `npm run test:paypal-config` uses only those labeled test accounts to check owner-only access and
 actual Sandbox OAuth authentication. It never creates an invoice or payment and never returns a provider token.
 
+Additional owner-only commands:
+
+```powershell
+npm run setup:reconcile
+npm run test:ai:prepare
+npm run test:ai
+npm run setup:paypal -- --test-fixture
+npm run test:paypal-flow -- --prepare-only
+npm run test:paypal-flow
+# Pay the returned Sandbox URL manually with the separate personal Sandbox account.
+npm run test:paypal-flow -- --verify
+```
+
+`setup:paypal` checks the registered callback and event list using PayPal's API. `--test-fixture`
+explicitly maps the seller to the labeled synthetic freelancer; otherwise set the intended
+`CREW_SELLER_MEMBERSHIP_ID`. A merchant cannot be silently remapped to another membership.
+The paid-flow command is resumable and creates a USD 1.25 Sandbox invoice only when run without
+`--prepare-only` or `--verify`. It never submits the payer's payment or fabricates settlement.
+The AI verification sends only an isolated, preflight-checked synthetic workspace to OpenAI,
+with invented `example.com` identities and no uploads or real client work. Fixtures and results
+remain under ignored `.supabase/`; they are retained rather than deleted.
+
 ## Verification and limitations
 
-- 66 regression tests pass across 14 files, including executing the full migration chain in PostgreSQL,
+- 80 regression tests pass across 16 files, including executing the full migration chain in PostgreSQL,
   worker/peer isolation, direct-write denial, invitation identity/replay handling, timestamps,
-  immutable file evidence, notifications, signup UI and persisted workspace selection.
+  immutable file evidence, notifications, signup UI, persisted workspace selection, safe provider
+  error handling and rejection of missing PayPal transmission signature headers.
 - Production frontend build and all three server entry-point type checks pass.
 - Thirteen live integration checks passed with three distinct real Supabase accounts. They cover
   sign-in, anonymous denial, idempotent workspace creation, invitation acceptance, assignment,
@@ -144,23 +171,38 @@ actual Sandbox OAuth authentication. It never creates an invoice or payment and 
   Full authenticated browser rehearsal and real confirmation-email delivery remain manual gates.
 - The configured `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` successfully authenticated against the
   real Sandbox OAuth endpoint. The worker was denied the owner-only configuration check. No invoice
-  or payment was created by this test. Missing provider secrets at handoff: `OPENAI_API_KEY`,
-  `PAYPAL_MERCHANT_ID`, `PAYPAL_SELLER_EMAIL`, `PAYPAL_PAYER_EMAIL`, `PAYPAL_WEBHOOK_ID`.
-- The security advisor reports no database policy errors. It does flag disabled leaked-password
+  or payment was created by this test. The user has configured seller/payer metadata; registration
+  of the matching webhook and `PAYPAL_WEBHOOK_ID` remain pending. The synthetic free correction,
+  USD 0.25 accepted addition, second delivery and final approval passed for a USD 1.25 agreement.
+- `paypal-webhook` is ACTIVE with `verify_jwt=false`. Public GET returned 405 and malformed POST
+  returned 400 from the handler without any Supabase credentials. Signature verification posts
+  the complete event and transmission headers to PayPal, and requires `SUCCESS` before storing it.
+  After redeployment, an invoice-shaped unsigned POST returned HTTP 400 `BAD_SIGNATURE`.
+- One Vault-backed minute reconciliation job is active. Three observed scheduled requests returned
+  HTTP 200 without timeout/error. Anonymous and authenticated users cannot read decrypted Vault
+  secrets or execute the service authorization/setup RPCs.
+- The security advisor reports no database policy errors. It flags managed `pg_net` extension
+  metadata in `public`; hosted metadata confirms `extrelocatable=false`. Do not force a catalog
+  edit or drop the working scheduler extension; see [Supabase's pg_net guidance](https://supabase.com/docs/guides/database/extensions/pg_net).
+  It also flags disabled leaked-password
   protection in hosted Auth. Review [Supabase's remediation](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection)
   and plan availability before public production rollout. Email confirmation remains enabled.
-- Real OpenAI responses, a real PayPal Sandbox invoice/payment, signature verification round trip,
-  and the configured retry scheduler have **not** been verified without the provider secrets.
+- A fixed 64-token synthetic OpenAI probe reached the provider but returned HTTP 429,
+  `credit_balance_exhausted` / `insufficient_quota`. No live model output or quality evaluation
+  has passed. Add API credits or replace the server secret with a funded API-project key.
+- A real PayPal Sandbox invoice/payment and genuine signature-verification round trip remain
+  unverified until the webhook ID is configured and the separate Sandbox payer completes payment.
 - No PayPal Payouts or multi-seller onboarding is implemented or implied.
 
 ## Remaining release sequence
 
-1. Add the provider secrets securely and choose the actual freelancer membership for the single seller.
-   Run `npm run configure:seller` in the owner's isolated shell after setting its three metadata variables.
+1. Choose the freelancer membership for the single seller, then run `npm run setup:paypal` with
+   `CREW_SELLER_MEMBERSHIP_ID`, or explicitly use `-- --test-fixture` for the synthetic test account.
 2. Register `https://tsnwowlyrlxpwwetmxns.supabase.co/functions/v1/paypal-webhook` in the matching Sandbox
    REST app for the Invoicing events listed in README. Use a separate personal Sandbox payer.
-3. Configure the Vault-backed retry schedule once; inspect pending webhook errors and function logs.
-4. Run the live AI evaluation and rehearse the complete two-user UI workflow on the protected preview.
+3. Inspect the existing Vault-backed retry schedule, pending webhook errors and function logs.
+4. Fund the OpenAI API project, run synthetic live AI verification and the quality evaluation,
+   then rehearse the complete two-user UI workflow on the protected preview.
 5. Create and pay a genuine new Sandbox invoice. Verify signed webhook receipt and GET invoice settlement;
    retry/deliver duplicates and confirm no duplicate billing or financial records.
 6. Review the pull request and approve the production environment/deployment as the final release step.

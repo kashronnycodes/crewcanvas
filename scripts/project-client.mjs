@@ -58,6 +58,7 @@ export function projectClient() {
   }
   return {
     publicKey,
+    serviceKey,
     admin: createClient(projectUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     }),

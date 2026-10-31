@@ -149,16 +149,16 @@ Configure these server secrets:
 - `PAYPAL_WEBHOOK_ID`: the registered webhook for that REST app.
 - `ALLOWED_ORIGIN`: exact frontend origin, without a trailing slash.
 
-Also provide the merchant ID and seller email to the seed shell and rerun the
-seed; it records Ava's non-secret seller connection. Credentials stay in secrets.
-For a workspace created through registration, set `CREW_SELLER_MEMBERSHIP_ID`,
-`PAYPAL_MERCHANT_ID`, and `PAYPAL_SELLER_EMAIL` in the owner's isolated CLI shell
-and run `npm run configure:seller` instead. It refuses to overwrite a different
-seller or create an ambiguous second mapping.
+For a workspace created through registration, set `CREW_SELLER_MEMBERSHIP_ID`
+in the owner's isolated CLI shell and run `npm run setup:paypal`. The backend
+reads merchant/email settings from Supabase secrets and verifies the actual
+webhook registration in the same Sandbox REST app. Use `-- --test-fixture` only
+to select the labeled synthetic test freelancer. It refuses a different existing
+seller or an ambiguous second mapping. The older seed/configure helper remains available.
 New connected-seller projects can create invoices. Historical sample projects
 cannot create real invoices, even when assigned to Ava.
 
-Register the public HTTPS `.../functions/v1/paypal-webhook` URL for
+Register `https://tsnwowlyrlxpwwetmxns.supabase.co/functions/v1/paypal-webhook` for
 `INVOICING.INVOICE.CREATED`, `UPDATED`, `PAID`, `CANCELLED`, and `REFUNDED`.
 The handler sends the received event and PayPal signature headers back to
 PayPal's verification endpoint. Simulator mock events do not support that
@@ -189,8 +189,9 @@ IDs deduplicate repeats; unfinished events remain retryable. Per-invoice leases
 serialize reconciliation. The browser polls integrated data every 15 seconds,
 and project participants can request a manual refresh.
 
-Set Vault secrets `crewcanvas_project_url` and `crewcanvas_service_key`, then run
-`docs/schedule.sql` once. The minute job retries unfinished events and reconciles
+Run `npm run setup:reconcile` through the isolated owner login. It stores the
+server key in encrypted Vault and creates one checked minute job. The job is
+already active in the verified CrewCanvas project. It retries unfinished events and reconciles
 the first 200 sandbox invoice rows, sufficient for this bounded hackathon demo.
 Use a paginated job before expanding beyond that size. Do not schedule it twice.
 Inspect reconciliation function logs and `private.webhook_events.last_error` for

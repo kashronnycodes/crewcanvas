@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { SessionActor, WorkspaceAnswer } from "../../../shared/types.ts";
 import { answerWorkspace } from "../../../shared/workspace.ts";
 import { workspaceAIContext } from "../../../shared/ai-context.ts";
+import { aiFailure } from "../../../shared/ai-errors.ts";
 import { money, parseAmount, todayIn } from "../../../shared/domain.ts";
 import { admin, env, HttpError, providerStore, snapshot } from "./backend.ts";
 const intentSchema = z.object({
@@ -50,12 +51,9 @@ export async function workspaceCommand(
       max_output_tokens: 300,
     });
     intent = intentSchema.parse(result.output_parsed).intent;
-  } catch {
-    throw new HttpError(
-      502,
-      "AI_UNAVAILABLE",
-      "Workspace AI is unavailable. Your canvas and manual review remain available.",
-    );
+  } catch (error) {
+    const failure = aiFailure(error);
+    throw new HttpError(failure.status, failure.code, failure.message);
   }
   const financial = {
     ...s,
@@ -95,12 +93,9 @@ export async function workspaceCommand(
       ) throw new Error("Invalid project reference");
       answer.text = result.summary;
       answer.highlight = result.projectIds.map((id) => `task:${id}`);
-    } catch {
-      throw new HttpError(
-        502,
-        "AI_UNAVAILABLE",
-        "AI could not produce a validated summary. Your records and manual review remain available.",
-      );
+    } catch (error) {
+      const failure = aiFailure(error);
+      throw new HttpError(failure.status, failure.code, failure.message);
     }
   }
   if (intent === "spending") {

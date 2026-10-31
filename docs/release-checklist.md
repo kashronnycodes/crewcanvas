@@ -16,11 +16,12 @@
 
 These are not implied by a successful local build or by the demo.
 
-1. Create/link a dedicated CrewCanvas Supabase project. Do not apply migrations
-   to any unrelated existing project.
-2. Apply migrations, run the seed, and verify Myron/Ava sign-ins in separate
-   browser contexts. Workers must have no peer-project access.
-3. Set the OpenAI key in Edge Function secrets; run the 16-case evaluator.
+1. Use the existing verified `tsnwowlyrlxpwwetmxns` project in `ronnybraces`.
+   Six migrations are applied. Do not create a replacement or modify unrelated projects.
+2. Rehearse owner/freelancer sign-ins in separate browser contexts. API/storage
+   integration and worker/peer isolation passed; full browser rehearsal remains pending.
+3. Fund the configured OpenAI API project (the current key reports insufficient quota),
+   run the synthetic live verification, then run the 16-case evaluator.
    Require 16 valid/cited outputs, all four mixed cases split correctly,
    and at least 14 expected classifications.
 4. Configure one sandbox business seller, matching REST app, personal payer,
@@ -32,8 +33,8 @@ These are not implied by a successful local build or by the demo.
 7. Confirm pending and partial payments are not represented as fully paid.
    Treat API timeouts/unknown creation outcomes as unresolved, without a new
    invoice or false success. Verify manual refresh and scheduled retries.
-8. Enable the reconciliation schedule; inspect failures in the function logs
-   and the private inbox. A disabled scheduler is not a complete integration.
+8. The minute reconciliation schedule is enabled and observed returning HTTP 200.
+   Inspect failures in function logs and the private inbox during the actual payment test.
 9. Deploy with VITE_APP_MODE=integrated and correct public Supabase settings.
    Configure allowed origin/auth redirects for the deployed frontend URL.
 10. Rehearse the README demo, record the six-minute video, and retain provider

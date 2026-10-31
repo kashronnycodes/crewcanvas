@@ -21,6 +21,27 @@ export const admin = () =>
   createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+export async function requireService(req: Request) {
+  const key = req.headers.get("apikey");
+  if (!key) {
+    throw new HttpError(
+      401,
+      "UNAUTHENTICATED",
+      "Service authentication required.",
+    );
+  }
+  const caller = createClient(env("SUPABASE_URL"), key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const result = await caller.rpc("backend_service_authorized");
+  if (result.error || result.data !== true) {
+    throw new HttpError(
+      401,
+      "UNAUTHENTICATED",
+      "Service authentication required.",
+    );
+  }
+}
 export class HttpError extends Error {
   constructor(
     public status: number,

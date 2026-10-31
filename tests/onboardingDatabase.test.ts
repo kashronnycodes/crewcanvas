@@ -135,11 +135,23 @@ describe.sequential("onboarding, tenant isolation and notifications", () => {
     await expect(db.query("select * from private.workspace_invites")).rejects
       .toThrow();
     await expect(
+      db.query("select public.configure_reconciliation($1)", ["fake-test-key"]),
+    ).rejects.toThrow();
+    await expect(db.query("select public.backend_service_authorized()")).rejects
+      .toThrow();
+    await expect(
       db.query(
         "update public.memberships set access_role='employer' where id=$1",
         [workerMember],
       ),
     ).rejects.toThrow();
+    await db.exec("reset role");
+    await db.exec("set role service_role");
+    expect(
+      (await db.query<{ allowed: boolean }>(
+        "select public.backend_service_authorized() as allowed",
+      )).rows[0].allowed,
+    ).toBe(true);
     await db.exec("reset role");
   });
   it("persists workflow events and creates one recipient notification per event", async () => {
