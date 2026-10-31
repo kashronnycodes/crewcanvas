@@ -1,11 +1,15 @@
-// Verify the protected preview's permitted browser origin against the real API.
+// Verify a permitted CrewCanvas browser origin against the real API.
 // This does not bypass Vercel protection or persist authentication credentials.
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { projectClient, projectUrl } from "./project-client.mjs";
 import { testSession } from "./test-session.mjs";
-const origin =
+const origin = process.env.CREW_TEST_ORIGIN ??
   "https://crewcanvas-cr32blog9-kashronnycodes-projects.vercel.app";
+assert.ok([
+  "https://crewcanvas-cr32blog9-kashronnycodes-projects.vercel.app",
+  "https://crewcanvas.vercel.app",
+].includes(origin), "Only the verified CrewCanvas preview or production origin is permitted");
 const fixture = JSON.parse(
   readFileSync(
     new URL("../.supabase/ai-fixtures.json", import.meta.url),
@@ -92,7 +96,7 @@ try {
     ),
   );
   console.log(
-    "PASS existing integrated preview origin: CORS preflight, real authenticated Gemini summary and live response contract. Vercel sign-in protection retained.",
+    `PASS ${origin}: CORS preflight, real authenticated Gemini summary and live response contract.`,
   );
 } finally {
   await session.close();
