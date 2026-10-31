@@ -24,7 +24,8 @@ browser rehearsal may follow deployment for the four-person hackathon team.
   The previously verified signed paid event and unique transaction are retained.
 - Vercel production settings were missing and have now been configured:
   integrated mode, the exact `tsnwowlyrlxpwwetmxns` URL, and its matching
-  publishable key. An in-memory environment verification passed. No provider
+  publishable key. A direct cloud verification of only those three public
+  values passed in memory, independently of local environment files. No provider
   or service-role credential was configured in Vercel.
 - The production origin is already allowed by backend CORS and Auth redirect
   configuration. A fresh production-origin preflight and authenticated real
