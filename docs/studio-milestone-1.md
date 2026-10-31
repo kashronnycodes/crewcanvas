@@ -97,7 +97,10 @@ invoice or payment was created by this milestone. `OPENAI_API_KEY` is retained.
 ## Measured performance and practical limits
 
 Canvas modules are lazy loaded; unaffected board nodes are memoized and only
-visible elements render. The initial JavaScript entry measured approximately
+visible elements render. React Flow's measured node dimensions are retained as
+client presentation state while object records synchronize. A repeated local
+drag saved successfully with zero new React Flow initialization warnings,
+after those warnings were observed before this fix. The initial JavaScript entry measured approximately
 638 KB minified / 190 KB gzip, versus 868 KB / 264 KB before splitting this
 milestone: about 27% less entry payload. This is a bundle measurement, not an FPS
 claim. Final hashes/sizes may change with a subsequent build.
