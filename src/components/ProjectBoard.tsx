@@ -195,6 +195,9 @@ function Board(
     agreement = activeAgreement(project);
   const scope = `crewcanvas.board-draft.${s.actorId}.${projectId}`;
   const [rows, setRows] = useState<BoardObject[]>([]), latest = useRef(rows);
+  const [measurements, setMeasurements] = useState(
+    () => new Map<string, { width: number; height: number }>(),
+  );
   latest.current = rows;
   const [ready, setReady] = useState(false),
     [status, setStatus] = useState("Connecting…"),
@@ -399,6 +402,7 @@ function Board(
           position: { x: row.data.x, y: row.data.y },
           width: row.data.width,
           height: row.data.height,
+          measured: measurements.get(row.id),
           style: { width: row.data.width, height: row.data.height },
           zIndex: row.data.z,
           selected: selected.includes(row.id),
@@ -413,7 +417,7 @@ function Board(
           },
         }),
       ),
-    [rows, selected, s.files],
+    [rows, selected, s.files, measurements],
   );
   const [moving, setMoving] = useState<BoardNode[] | null>(null);
   const geometryBases = useRef(new Map<string, BoardObject>());
@@ -735,6 +739,25 @@ function Board(
         edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={(changes) => {
+          // React Flow's measured dimensions are presentation state. Preserve
+          // them when rebuilding controlled nodes, without persisting them or
+          // freezing remote records behind the temporary drag state.
+          setMeasurements((current) => {
+            let next = current;
+            for (const change of changes) {
+              if (change.type !== "dimensions" || !change.dimensions) continue;
+              const dimensions = change.dimensions,
+                old = current.get(change.id);
+              if (
+                dimensions.width <= 0 || dimensions.height <= 0 ||
+                old?.width === dimensions.width &&
+                  old?.height === dimensions.height
+              ) continue;
+              if (next === current) next = new Map(current);
+              next.set(change.id, dimensions);
+            }
+            return next;
+          });
           if (
             changes.some((change) =>
               change.type === "position" ||
