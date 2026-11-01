@@ -1,11 +1,9 @@
 import { type DragEvent, memo, useMemo, useRef, useState } from "react";
 import {
   type Connection,
-  Handle,
   type Node,
   type NodeProps,
   NodeResizer,
-  Position,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -40,9 +38,24 @@ import { api, mode } from "../services";
 import { files } from "../fileService";
 import { FileInspector, FilePreview } from "./WorkspaceFiles";
 import Modal from "./Modal";
+import { FourWayHandles } from "./SmartEdge";
+import {
+  paymentSummary,
+  type ProjectTab,
+  simpleFreelanceGraph,
+  visibleTerms,
+} from "../../shared/freelance-canvas";
 
 export type WorkCardData = {
-  kind: "project" | "task" | "payment" | "delivery" | "revision" | "file";
+  kind:
+    | "project"
+    | "agreement"
+    | "task"
+    | "submission"
+    | "payment"
+    | "delivery"
+    | "revision"
+    | "file";
   title: string;
   subtitle: string;
   project?: Project;
@@ -51,6 +64,11 @@ export type WorkCardData = {
   onOpen: () => void;
   onResize: (width: number, height: number) => void;
   onPay?: () => void;
+  tab?: ProjectTab;
+  compact?: boolean;
+  onApprove?: () => void;
+  onRevision?: () => void;
+  busy?: boolean;
 };
 export const WorkCard = memo(
   function WorkCard(
@@ -78,9 +96,14 @@ export const WorkCard = memo(
             onResizeEnd={(_, p) => w.onResize(p.width, p.height)}
           />
         )}
-        <Handle type="target" position={Position.Left} />
-        <Handle type="source" position={Position.Right} />
-        <button className="work-card-heading nodrag" onClick={w.onOpen}>
+        <FourWayHandles />
+        <button
+          className="work-card-heading nodrag"
+          onClick={(e) => {
+            e.stopPropagation();
+            w.onOpen();
+          }}
+        >
           <Icon size={14} />
           <span>{w.kind === "payment" ? "PAYMENT" : w.kind.toUpperCase()}</span>
           <ArrowRight size={13} />
@@ -90,19 +113,34 @@ export const WorkCard = memo(
             <FilePreview file={w.file} />
           </div>
         )}
-        <button className="work-card-title nodrag" onClick={w.onOpen}>
+        <button
+          className="work-card-title nodrag"
+          onClick={(e) => {
+            e.stopPropagation();
+            w.onOpen();
+          }}
+        >
           {w.title}
         </button>
         <p>{w.subtitle}</p>
         {amount && (
           <strong className="payment-value">
-            {money(amount.total.toString())}
-            <small>USD · approved total</small>
+            {money(
+              w.compact && w.project && !activeAgreement(w.project)
+                ? visibleTerms(w.project)?.amountMinor ?? "0"
+                : amount.total.toString(),
+            )}
+            <small>
+              {w.compact && w.project && !activeAgreement(w.project)
+                ? "USD · proposed · not yet agreed"
+                : "USD · total agreed"}
+            </small>
           </strong>
         )}
         <div
           className={`work-card-status ${
-            w.status.includes("paid") || w.status.includes("accepted")
+            /^(Paid · verified PayPal Sandbox|Verified paid|Agreement accepted|accepted)$/
+                .test(w.status)
               ? "positive"
               : ""
           }`}
@@ -110,15 +148,52 @@ export const WorkCard = memo(
           <span aria-hidden>●</span>
           {w.status}
         </div>
+        {w.onApprove && (
+          <div
+            className="card-actions nodrag"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button disabled={w.busy} onClick={w.onApprove}>
+              Approve Work
+            </button>
+            <button disabled={w.busy} onClick={w.onRevision}>
+              Request Revision
+            </button>
+          </div>
+        )}
         {w.kind === "payment" && (
           <>
+            {w.compact && w.project && (
+              <dl className="simple-payment-breakdown">
+                {activeAgreement(w.project)
+                  ? (
+                    <>
+                      <dt>Original agreement</dt>
+                      <dd>{money(paymentSummary(w.project).original)}</dd>
+                      <dt>Approved revisions</dt>
+                      <dd>{money(paymentSummary(w.project).additions)}</dd>
+                    </>
+                  )
+                  : (
+                    <>
+                      <dt>Total agreed</dt>
+                      <dd>$0.00 · awaiting acceptance</dd>
+                    </>
+                  )}
+              </dl>
+            )}
             <small className="payment-source">
               {w.project?.origin === "sample"
                 ? "Sample records"
                 : "PayPal Sandbox · seller invoice"}
             </small>
-            <div className="card-actions nodrag">
-              <button onClick={w.onOpen}>Review work</button>
+            <div
+              className="card-actions nodrag"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button onClick={w.onOpen}>
+                {w.compact ? "Payment details" : "Review work"}
+              </button>
               {w.onPay && <button onClick={w.onPay}>Pay with PayPal</button>}
             </div>
           </>
@@ -130,7 +205,8 @@ export const WorkCard = memo(
     const a = before.data.work, b = after.data.work;
     return before.selected === after.selected && a.kind === b.kind &&
       a.title === b.title && a.subtitle === b.subtitle &&
-      a.status === b.status && a.project === b.project && a.file === b.file;
+      a.status === b.status && a.project === b.project && a.file === b.file &&
+      a.compact === b.compact && a.busy === b.busy;
   },
 );
 type Focus = "all" | "tasks" | "people" | "payments" | "files" | "deadlines";
@@ -143,11 +219,17 @@ type Options = {
     id: string,
     filter?: "all" | "attention" | "completed",
     projectId?: string,
+    tab?: ProjectTab,
   ) => void;
   onNotify: (s: string) => void;
+  onCommand: (
+    command: import("../../shared/validation").Command,
+  ) => Promise<boolean>;
+  busy: boolean;
 };
 export function useWorkspaceCanvas(
-  { snapshot: s, layout, persist, flow, onSelect, onNotify }: Options,
+  { snapshot: s, layout, persist, flow, onSelect, onNotify, onCommand, busy }:
+    Options,
 ) {
   const client = useQueryClient(),
     input = useRef<HTMLInputElement>(null),
@@ -155,6 +237,7 @@ export function useWorkspaceCanvas(
   const latestLayout = useRef({ layout, persist });
   latestLayout.current = { layout, persist };
   const [focus, setFocus] = useState<Focus>("all"),
+    [detailed, setDetailed] = useState(false),
     [inspector, setInspector] = useState<
       { id: string; left: number; top: number } | null
     >(null),
@@ -261,6 +344,46 @@ export function useWorkspaceCanvas(
         },
       });
     };
+    if (!detailed) {
+      for (const card of simpleFreelanceGraph(s).cards) {
+        add(
+          card.id,
+          card.kind,
+          card.title,
+          card.subtitle,
+          card.status,
+          card.x,
+          card.y,
+          card.project,
+        );
+        const node = output.at(-1)!;
+        node.data.work.tab = card.tab;
+        node.data.work.compact = true;
+        node.data.work.onOpen = () =>
+          onSelect(card.project.workerId, "all", card.project.id, card.tab);
+        if (
+          card.kind === "delivery" && card.project.state === "submitted" &&
+          card.id === `delivery:${card.project.deliveries.at(-1)?.id}` &&
+          s.people.find((p) => p.id === s.actorId)?.accessRole === "employer"
+        ) {
+          node.data.work.onApprove = () =>
+            void onCommand({
+              type: "acceptDelivery",
+              projectId: card.project.id,
+              deliveryId: card.project.deliveries.at(-1)!.id,
+            });
+          node.data.work.onRevision = () =>
+            onSelect(
+              card.project.workerId,
+              "all",
+              card.project.id,
+              "revisions",
+            );
+          node.data.work.busy = busy;
+        }
+      }
+      return output;
+    }
     s.projects.forEach((p, i) => {
       const y = 80 + i * 410,
         a = activeAgreement(p),
@@ -358,8 +481,30 @@ export function useWorkspaceCanvas(
       )
     );
     return output;
-  }, [s, layout, flow]);
+  }, [s, layout, flow, detailed, onSelect, onCommand, busy]);
   const workEdges = useMemo(() => {
+    if (!detailed) {
+      const graph = simpleFreelanceGraph(s),
+        ids = new Set([
+          ...graph.cards.map((n) => n.id),
+          ...s.people.filter((p) => p.accessRole === "worker").map((p) => p.id),
+        ]);
+      return [
+        ...graph.edges,
+        ...(layout.connections ?? []).filter((e) =>
+          ids.has(e.source) && ids.has(e.target) &&
+          !graph.edges.some((g) =>
+            g.source === e.source && g.target === e.target
+          )
+        ),
+      ]
+        .map((e) => ({
+          ...e,
+          type: "default",
+          style: { stroke: "var(--line-strong)", strokeWidth: 1.2 },
+          data: { meaning: connectionMeaning(s, e.source, e.target) },
+        }));
+    }
     const result: {
       id: string;
       source: string;
@@ -425,7 +570,7 @@ export function useWorkspaceCanvas(
       style: { stroke: "#c1c9c5", strokeWidth: 1 },
       data: { meaning: connectionMeaning(s, e.source, e.target) },
     }));
-  }, [s, layout.connections]);
+  }, [s, layout.connections, detailed]);
   const emphasized = new Set<string>();
   if (focus !== "all") {
     for (const n of workNodes) {
@@ -640,6 +785,25 @@ export function useWorkspaceCanvas(
   ].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100);
   const ui = (
     <>
+      <button
+        className="map-display-toggle"
+        aria-pressed={detailed}
+        onClick={() => {
+          setDetailed(!detailed);
+          setFocus("all");
+          setAnswer(null);
+          setInspector(null);
+        }}
+      >
+        {detailed ? "Simple freelancer flow" : "Details & tools"}
+      </button>
+      {!detailed && (
+        <div className="simple-flow-guide">
+          Freelancer <ArrowRight size={12} /> Agreement <ArrowRight size={12} />
+          {" "}
+          Task <ArrowRight size={12} /> Submitted work
+        </div>
+      )}
       <div className="workspace-focus nodrag">
         <span>Focus</span>
         {([
@@ -933,17 +1097,44 @@ export function useWorkspaceCanvas(
                     </small>
                     {s.projects.filter((p) => p.workerId === person.id).map(
                       (p) => (
-                        <button
-                          className="inspector-project"
-                          key={p.id}
-                          onClick={() => {
-                            setInspector(null);
-                            showProject(p.id);
-                          }}
-                        >
-                          {p.title}
-                          <ArrowRight size={13} />
-                        </button>
+                        <div className="simple-person-project" key={p.id}>
+                          <button
+                            className="inspector-project"
+                            key={p.id}
+                            onClick={() => {
+                              setInspector(null);
+                              showProject(p.id);
+                            }}
+                          >
+                            {p.title}
+                            <ArrowRight size={13} />
+                          </button>
+                          {!detailed && (
+                            <dl className="simple-payment-breakdown">
+                              <dt>Task</dt>
+                              <dd>{visibleTerms(p)?.tasks?.[0] ?? p.title}</dd>
+                              <dt>Status</dt>
+                              <dd>{p.state.replaceAll("_", " ")}</dd>
+                              <dt>Deadline</dt>
+                              <dd>
+                                {visibleTerms(p)?.deadline ?? "Not agreed"}
+                              </dd>
+                              <dt>
+                                {activeAgreement(p)
+                                  ? "Agreed fee"
+                                  : "Proposed fee"}
+                              </dt>
+                              <dd>
+                                {money(visibleTerms(p)?.amountMinor ?? "0")}
+                              </dd>
+                              <dt>Latest work</dt>
+                              <dd>
+                                {p.deliveries.at(-1)?.label ??
+                                  "Nothing submitted yet"}
+                              </dd>
+                            </dl>
+                          )}
+                        </div>
                       ),
                     )}
                     <button
@@ -982,9 +1173,18 @@ export function useWorkspaceCanvas(
                     )}
                     <button
                       className="button primary"
-                      onClick={() => onSelect(p.workerId, "all", p.id)}
+                      onClick={() => {
+                        setInspector(null);
+                        onSelect(p.workerId, "all", p.id, work?.tab);
+                      }}
                     >
-                      {p.state === "submitted"
+                      {work?.tab === "revisions"
+                        ? "Review revision & fee"
+                        : work?.tab === "deliverables"
+                        ? "Open submitted work"
+                        : work?.tab === "payments"
+                        ? "Open payment details"
+                        : p.state === "submitted"
                         ? "Review & approve / request revision"
                         : "Open project details"}
                     </button>
@@ -1103,6 +1303,7 @@ export function useWorkspaceCanvas(
       style: { ...n.style, opacity: opacity(n.id) },
     })),
     workEdges,
+    detailed,
     opacity,
     ui,
     container,
