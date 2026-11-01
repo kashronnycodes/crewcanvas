@@ -144,3 +144,14 @@ body .work-card p, body .payment-source { color: var(--secondary); }
   .project-board-shell .focus-canvas { min-height: 0; }
   .project-board { min-height: 230px; }
 }
+.map-display-toggle { position: absolute; top: 14px; right: 64px; z-index: 8; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--secondary); font-size: 11px; }
+.simple-flow-guide { position: absolute; top: 16px; left: 20px; z-index: 7; display: flex; gap: 8px; align-items: center; color: var(--secondary); font-size: 11px; pointer-events: none; }
+.simple-work-map .workspace-focus, .simple-work-map .workflow-jump, .simple-work-map .financial-flow, .simple-work-map .workspace-command, .simple-work-map .canvas-hint { display: none; }
+.simple-work-map .legend > span:not(.saved-label) { display: none; }
+.simple-work-map .work-card-status { max-height: 65px; overflow: hidden; overflow-wrap: anywhere; }
+.simple-payment-breakdown { display: grid; grid-template-columns: 1fr auto; gap: 7px 12px; margin: 12px 0; font-size: 11px; color: var(--secondary); }
+.simple-payment-breakdown dt, .simple-payment-breakdown dd { margin: 0; }
+.simple-payment-breakdown dd { color: var(--text); text-align: right; overflow-wrap: anywhere; }
+.simple-person-project { border-top: 1px solid var(--line); margin: 12px 0; }
+.simple-person-project .simple-payment-breakdown { grid-template-columns: 70px minmax(0,1fr); line-height: 1.5; }
+@media(max-width:700px) { .simple-flow-guide { max-width: calc(100% - 170px); flex-wrap: wrap; font-size: 9px; gap: 4px; } .map-display-toggle { font-size: 10px; right: 52px; } }

@@ -54,13 +54,14 @@ const tabs = [
   { id: "revisions", icon: MessageSquare, label: "Revisions" },
   { id: "payments", icon: Wallet, label: "Payments" },
   { id: "activity", icon: History, label: "Activity" },
-];
+] as const;
 type Filter = "all" | "attention" | "completed";
 export default function ProjectDrawer({
   person,
   snapshot,
   initialFilter,
   initialProjectId,
+  initialTab = "overview",
   onClose,
   onCommand,
   onIssue,
@@ -72,6 +73,7 @@ export default function ProjectDrawer({
   snapshot: WorkspaceSnapshot;
   initialFilter: Filter;
   initialProjectId?: string;
+  initialTab?: import("../../shared/freelance-canvas").ProjectTab;
   onClose: () => void;
   onCommand: (c: Command) => Promise<boolean>;
   onIssue: (id: string) => Promise<boolean>;
@@ -92,13 +94,13 @@ export default function ProjectDrawer({
     initialProjectId ?? projects[0]?.id ?? "",
   );
   const [tab, setTab] = useState(
-    initialFilter === "attention" ? "payments" : "overview",
+    initialFilter === "attention" ? "payments" : initialTab,
   );
   const [editTerms, setEditTerms] = useState(false);
   useEffect(() => {
     setSelectedId(initialProjectId ?? projects[0]?.id ?? "");
-    setTab(initialFilter === "attention" ? "payments" : "overview");
-  }, [person.id, initialFilter, initialProjectId]);
+    setTab(initialFilter === "attention" ? "payments" : initialTab);
+  }, [person.id, initialFilter, initialProjectId, initialTab]);
   const p = projects.find((p) => p.id === selectedId) ?? projects[0];
   const a = p && activeAgreement(p);
   const employer =
@@ -742,10 +744,10 @@ function Deliverables({
                     })}
                 >
                   <Check size={14} />
-                  Accept delivery
+                  Approve Work
                 </button>
                 <button className="button secondary" onClick={onRevision}>
-                  Request changes
+                  Request Revision
                 </button>
               </div>
             )}
@@ -1134,7 +1136,7 @@ function Revisions({
                         description: item.text,
                       })}
                   >
-                    Propose additional work →
+                    Propose revision fee →
                   </button>
                 </div>
               )}
@@ -1311,7 +1313,7 @@ function Revisions({
                     accept: true,
                   })}
               >
-                Accept proposal
+                Approve revision fee
               </button>
               <button
                 disabled={busy}
