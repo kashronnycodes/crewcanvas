@@ -21,9 +21,8 @@ import {
 import { createDemoWorkspace, migrateDemoRoster } from "./demoRoster";
 import { validateCanvas } from "../shared/workspace";
 import { clearExpiredAuth } from "./authSession";
-export const mode = import.meta.env.VITE_APP_MODE === "integrated"
-  ? "integrated"
-  : "demo";
+export const mode =
+  import.meta.env.VITE_APP_MODE === "integrated" ? "integrated" : "demo";
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 export const supabase = url && key ? createClient(url, key) : null;
@@ -70,7 +69,7 @@ function readDemo(): WorkspaceSnapshot {
       if (
         parsed.people?.length &&
         parsed.projects?.every((p: { version: number }) =>
-          Number.isInteger(p.version)
+          Number.isInteger(p.version),
         )
       ) {
         if (migrateDemoRoster(parsed)) storeDemo(parsed);
@@ -143,208 +142,213 @@ export function setDemoActor(id: string) {
   demoActorId = id;
 }
 const processed = new Set<string>();
-export const repository: CrewRepository = mode === "demo"
-  ? {
-    async load() {
-      const s = readDemo();
-      s.actorId = demoActorId ?? s.actorId;
-      const actor = s.people.find((p) => p.id === s.actorId)!;
-      if (actor.accessRole === "worker") {
-        s.people = s.people.filter((p) => p.id === actor.id);
-        s.projects = s.projects.filter((p) => p.workerId === actor.id);
-        s.files = (s.files ?? []).filter((f) =>
-          s.projects.some((p) => p.id === f.projectId)
-        );
-        s.workspaceActivity = (s.workspaceActivity ?? []).filter((e) =>
-          s.projects.some((p) => p.id === e.projectId)
-        );
-        s.layout = { ...s.layout, people: [], groups: [] };
-      }
-      return s;
-    },
-    async command(input, requestId) {
-      if (processed.has(requestId)) return;
-      const command = commandSchema.parse(input);
-      const s = readDemo();
-      const person = s.people.find(
-        (p) => p.id === (demoActorId ?? s.actorId),
-      )!;
-      const actor = {
-        id: person.id,
-        role: person.accessRole,
-        workspaceId: s.id,
-      };
-      if (command.type === "createProject") {
-        if (actor.role !== "employer") {
-          throw new DomainError(
-            "FORBIDDEN",
-            "Only the employer can create projects.",
-          );
-        }
-        if (
-          !s.people.some(
-            (p) => p.id === command.workerId && p.accessRole === "worker",
-          )
-        ) {
-          throw new Error("Choose a workspace worker.");
-        }
-        const a = makeAgreement(command.terms, actor.id, null);
-        a.status = command.publish ? "proposed" : "draft";
-        s.projects.push({
-          id: uid(),
-          workspaceId: s.id,
-          workerId: command.workerId,
-          title: command.title,
-          state: "awaiting_agreement",
-          origin: "sample",
-          activeAgreementId: null,
-          agreements: [a],
-          deliveries: [],
-          revisions: [],
-          proposals: [],
-          invoices: [],
-          activity: [
-            {
-              id: uid(),
-              actorId: actor.id,
-              text: "Proposed a new project agreement.",
-              createdAt: new Date().toISOString(),
-            },
-          ],
-          version: 0,
-        });
-      } else {
-        const index = s.projects.findIndex(
-          (p) => p.id === command.projectId,
-        );
-        if (index < 0) throw new Error("Project not found.");
-        if (command.type === "submitFileDelivery") {
-          const file = s.files?.find((f) =>
-            f.id === command.fileId && f.projectId === command.projectId
-          );
-          if (!file?.versions[command.fileVersion]) {
-            throw new Error(
-              "Attach an existing file version to this project first.",
+export const repository: CrewRepository =
+  mode === "demo"
+    ? {
+        async load() {
+          const s = readDemo();
+          s.actorId = demoActorId ?? s.actorId;
+          const actor = s.people.find((p) => p.id === s.actorId)!;
+          if (actor.accessRole === "worker") {
+            s.people = s.people.filter((p) => p.id === actor.id);
+            s.projects = s.projects.filter((p) => p.workerId === actor.id);
+            s.files = (s.files ?? []).filter((f) =>
+              s.projects.some((p) => p.id === f.projectId),
             );
+            s.workspaceActivity = (s.workspaceActivity ?? []).filter((e) =>
+              s.projects.some((p) => p.id === e.projectId),
+            );
+            s.layout = { ...s.layout, people: [], groups: [] };
           }
-        }
-        s.projects[index] = execute(s.projects[index], command, actor, {
-          demo: true,
-        });
-      }
-      storeDemo(s);
-      processed.add(requestId);
-    },
-    async saveLayout(layout) {
-      const s = readDemo();
-      const person = s.people.find(
-        (p) => p.id === (demoActorId ?? s.actorId),
-      )!;
-      if (person.accessRole !== "employer") {
-        throw new Error("Only the employer can edit the canvas.");
-      }
-      const validated = layoutSchema.parse(layout);
-      validateCanvas(s, validated);
-      if (validated.version !== s.layout.version) {
-        throw new Error("Layout changed. Reload the latest workspace.");
-      }
-      s.layout = { ...validated, version: validated.version + 1 };
-      storeDemo(s);
-      return s.layout;
-    },
-  }
-  : {
-    async load() {
-      return api("snapshot");
-    },
-    async command(command, requestId) {
-      await api("command", command, requestId);
-    },
-    async saveLayout(layout) {
-      return api("layout", layout);
-    },
-  };
-export const scopeAssistant: ScopeAssistant = mode === "demo"
-  ? {
-    async extract(brief) {
-      await new Promise((r) => setTimeout(r, 600));
-      const parts = brief
-        .split(/[\n.!?]/)
-        .map((s) => s.trim())
-        .filter((s) => s.length > 8);
-      return {
-        tasks: parts.slice(0, 5).map((s) => `Review and prepare: ${s}`),
-        deliverables: parts.slice(0, 3).length
-          ? parts.slice(0, 3)
-          : ["Final export based on the brief"],
-        questions: [
-          "Confirm the final format and any reference assets before accepting.",
-        ],
-        mode: "demo",
-      };
-    },
-    async compare(projectId, text) {
-      await new Promise((r) => setTimeout(r, 650));
-      const p = readDemo().projects.find((p) => p.id === projectId);
-      const a = p?.agreements.find((a) => a.id === p.activeAgreementId);
-      if (!a) {
-        throw new Error("Accept an agreement before comparing scope.");
-      }
-      const items = text
-        .split(/\s+and\s+|\n|;/i)
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .map((s) => {
-          const correction = /spell|typo|technical|fix/i.test(s);
-          const extra = /second|new |extra|another|add /i.test(s);
-          const match = a.clauses.find((c) =>
-            correction
-              ? /spelling|correction|technical/i.test(c.text)
-              : /second concept|alternate ending/i.test(c.text)
-          );
-          const quote = match?.text
-            .split(/(?<=[.!?])\s+/)
-            .find((sentence) =>
-              correction
-                ? /spelling|correction|technical/i.test(sentence)
-                : /second concept|alternate ending/i.test(sentence)
-            ) ?? match?.text;
-          return {
-            text: s,
-            classification: correction
-              ? ("likely_included" as const)
-              : extra
-              ? ("potential_extra" as const)
-              : ("unclear" as const),
-            explanation: correction
-              ? "This appears to correct an existing deliverable."
-              : extra
-              ? "This appears to add a deliverable or direction."
-              : "Ask both parties to clarify the expected result.",
-            uncertainty: match && (correction || extra)
-              ? ("medium" as const)
-              : ("high" as const),
-            sources: match ? [{ clauseId: match.id, quote: quote! }] : [],
+          return s;
+        },
+        async command(input, requestId) {
+          if (processed.has(requestId)) return;
+          const command = commandSchema.parse(input);
+          const s = readDemo();
+          const person = s.people.find(
+            (p) => p.id === (demoActorId ?? s.actorId),
+          )!;
+          const actor = {
+            id: person.id,
+            role: person.accessRole,
+            workspaceId: s.id,
           };
-        });
-      verifySources(items, a);
-      return {
-        items,
-        questions: items.some((i) => i.classification === "unclear")
-          ? ["What specific output should this change produce?"]
-          : [],
-        mode: "demo",
+          if (command.type === "createProject") {
+            if (actor.role !== "employer") {
+              throw new DomainError(
+                "FORBIDDEN",
+                "Only the employer can create projects.",
+              );
+            }
+            if (
+              !s.people.some(
+                (p) => p.id === command.workerId && p.accessRole === "worker",
+              )
+            ) {
+              throw new Error("Choose a workspace worker.");
+            }
+            const a = makeAgreement(command.terms, actor.id, null);
+            a.status = command.publish ? "proposed" : "draft";
+            s.projects.push({
+              id: uid(),
+              workspaceId: s.id,
+              workerId: command.workerId,
+              title: command.title,
+              state: "awaiting_agreement",
+              origin: "sample",
+              activeAgreementId: null,
+              agreements: [a],
+              deliveries: [],
+              revisions: [],
+              proposals: [],
+              invoices: [],
+              activity: [
+                {
+                  id: uid(),
+                  actorId: actor.id,
+                  text: "Proposed a new project agreement.",
+                  createdAt: new Date().toISOString(),
+                },
+              ],
+              version: 0,
+            });
+          } else {
+            const index = s.projects.findIndex(
+              (p) => p.id === command.projectId,
+            );
+            if (index < 0) throw new Error("Project not found.");
+            if (command.type === "submitFileDelivery") {
+              const file = s.files?.find(
+                (f) =>
+                  f.id === command.fileId && f.projectId === command.projectId,
+              );
+              if (!file?.versions[command.fileVersion]) {
+                throw new Error(
+                  "Attach an existing file version to this project first.",
+                );
+              }
+            }
+            s.projects[index] = execute(s.projects[index], command, actor, {
+              demo: true,
+            });
+          }
+          storeDemo(s);
+          processed.add(requestId);
+        },
+        async saveLayout(layout) {
+          const s = readDemo();
+          const person = s.people.find(
+            (p) => p.id === (demoActorId ?? s.actorId),
+          )!;
+          if (person.accessRole !== "employer") {
+            throw new Error("Only the employer can edit the canvas.");
+          }
+          const validated = layoutSchema.parse(layout);
+          validateCanvas(s, validated);
+          if (validated.version !== s.layout.version) {
+            throw new Error("Layout changed. Reload the latest workspace.");
+          }
+          s.layout = { ...validated, version: validated.version + 1 };
+          storeDemo(s);
+          return s.layout;
+        },
+      }
+    : {
+        async load() {
+          return api("snapshot");
+        },
+        async command(command, requestId) {
+          await api("command", command, requestId);
+        },
+        async saveLayout(layout) {
+          return api("layout", layout);
+        },
       };
-    },
-  }
-  : {
-    async extract(brief) {
-      return api("ai/brief", { brief });
-    },
-    async compare(projectId, text) {
-      return api("ai/revision", { projectId, text });
-    },
-  };
+export const scopeAssistant: ScopeAssistant =
+  mode === "demo"
+    ? {
+        async extract(brief) {
+          await new Promise((r) => setTimeout(r, 600));
+          const parts = brief
+            .split(/[\n.!?]/)
+            .map((s) => s.trim())
+            .filter((s) => s.length > 8);
+          return {
+            tasks: parts.slice(0, 5).map((s) => `Review and prepare: ${s}`),
+            deliverables: parts.slice(0, 3).length
+              ? parts.slice(0, 3)
+              : ["Final export based on the brief"],
+            questions: [
+              "Confirm the final format and any reference assets before accepting.",
+            ],
+            mode: "demo",
+          };
+        },
+        async compare(projectId, text) {
+          await new Promise((r) => setTimeout(r, 650));
+          const p = readDemo().projects.find((p) => p.id === projectId);
+          const a = p?.agreements.find((a) => a.id === p.activeAgreementId);
+          if (!a) {
+            throw new Error("Accept an agreement before comparing scope.");
+          }
+          const items = text
+            .split(/\s+and\s+|\n|;/i)
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((s) => {
+              const correction = /spell|typo|technical|fix/i.test(s);
+              const extra = /second|new |extra|another|add /i.test(s);
+              const match = a.clauses.find((c) =>
+                correction
+                  ? /spelling|correction|technical/i.test(c.text)
+                  : /second concept|alternate ending/i.test(c.text),
+              );
+              const quote =
+                match?.text
+                  .split(/(?<=[.!?])\s+/)
+                  .find((sentence) =>
+                    correction
+                      ? /spelling|correction|technical/i.test(sentence)
+                      : /second concept|alternate ending/i.test(sentence),
+                  ) ?? match?.text;
+              return {
+                text: s,
+                classification: correction
+                  ? ("likely_included" as const)
+                  : extra
+                    ? ("potential_extra" as const)
+                    : ("unclear" as const),
+                explanation: correction
+                  ? "This appears to correct an existing deliverable."
+                  : extra
+                    ? "This appears to add a deliverable or direction."
+                    : "Ask both parties to clarify the expected result.",
+                uncertainty:
+                  match && (correction || extra)
+                    ? ("medium" as const)
+                    : ("high" as const),
+                sources: match ? [{ clauseId: match.id, quote: quote! }] : [],
+              };
+            });
+          verifySources(items, a);
+          return {
+            items,
+            questions: items.some((i) => i.classification === "unclear")
+              ? ["What specific output should this change produce?"]
+              : [],
+            mode: "demo",
+          };
+        },
+      }
+    : {
+        async extract(brief) {
+          return api("ai/brief", { brief });
+        },
+        async compare(projectId, text) {
+          return api("ai/revision", { projectId, text });
+        },
+      };
 export const payments: PaymentGateway = {
   async issue(projectId, requestId) {
     if (mode === "demo") {
@@ -397,8 +401,7 @@ export async function inviteMember(email: string, name: string, role: string) {
     storeDemo(snapshot);
     return {
       url: "",
-      message:
-        `${name} was added to the local sample workspace. This invitation is simulated; no email was sent. Real sign-in requires integrated mode.`,
+      message: `${name} was added to the local sample workspace. This invitation is simulated; no email was sent. Real sign-in requires integrated mode.`,
     };
   }
   return api("invite", value);
