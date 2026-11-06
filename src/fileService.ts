@@ -1,4 +1,5 @@
 import type { WorkspaceFile, WorkspaceSnapshot } from "../shared/types";
+import { responseError } from "../shared/http-errors";
 import { MAX_FILE_BYTES, validateFile } from "../shared/workspace";
 import {
   api,
@@ -190,7 +191,7 @@ export const files = {
         try {
           const result = JSON.parse(xhr.responseText);
           if (xhr.status < 200 || xhr.status >= 300) {
-            throw new Error(result.error?.message ?? "Upload failed.");
+            throw responseError(xhr.status, xhr.getResponseHeader("Retry-After"), result);
           }
           onProgress(100);
           resolve(result);

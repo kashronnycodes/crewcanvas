@@ -21,6 +21,7 @@ import {
 import { createDemoWorkspace, migrateDemoRoster } from "./demoRoster";
 import { validateCanvas } from "../shared/workspace";
 import { clearExpiredAuth } from "./authSession";
+import { responseError } from "../shared/http-errors";
 export const mode = import.meta.env.VITE_APP_MODE === "integrated"
   ? "integrated"
   : "demo";
@@ -125,7 +126,7 @@ export async function api(path: string, body?: unknown, requestId?: string) {
   });
   const result = await response.json();
   if (!response.ok) {
-    throw new Error(result.error?.message ?? "The request failed. Try again.");
+    throw responseError(response.status, response.headers.get("Retry-After"), result);
   }
   return result;
 }

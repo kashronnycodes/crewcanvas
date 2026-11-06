@@ -47,6 +47,7 @@ export class HttpError extends Error {
     public status: number,
     public code: string,
     message: string,
+    public retryAfter?: number,
   ) {
     super(message);
   }
@@ -62,6 +63,7 @@ export function headers(req: Request) {
     "Access-Control-Allow-Headers":
       "authorization, apikey, content-type, idempotency-key, x-client-info, x-workspace-id",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Expose-Headers": "Retry-After",
   };
 }
 export function allowedOrigins(): string[] {
@@ -78,11 +80,15 @@ export function respond(req: Request, body: unknown, status = 200) {
 }
 export function errorResponse(req: Request, error: unknown) {
   if (error instanceof HttpError) {
-    return respond(
+    const response = respond(
       req,
-      { error: { code: error.code, message: error.message } },
+      { ok: false, code: error.code, message: error.message, error: { code: error.code, message: error.message } },
       error.status,
     );
+    if (error.retryAfter !== undefined || error.status === 429) {
+      response.headers.set("Retry-After", String(error.retryAfter ?? 60));
+    }
+    return response;
   }
   if (error instanceof DomainError) {
     return respond(
