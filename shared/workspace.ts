@@ -143,7 +143,7 @@ export function canvasEntities(s: WorkspaceSnapshot) {
     entities.set(p.id, { kind: "person", personId: p.id });
   }
   for (const p of s.projects) {
-    for (const kind of ["project", "task", "payment"]) {
+    for (const kind of ["project", "task", "payment", "submission"]) {
       entities.set(`${kind}:${p.id}`, {
         kind,
         projectId: p.id,
@@ -179,6 +179,9 @@ export function connectionMeaning(
   if (pair === "person:task" && a.personId === b.personId) {
     return "Assigned freelancer";
   }
+  if (pair === "person:project" && a.personId === b.personId) {
+    return "Freelancer agreement";
+  }
   if (pair === "project:person" && a.personId === b.personId) {
     return "Project freelancer";
   }
@@ -187,6 +190,15 @@ export function connectionMeaning(
     return "Approved work and invoice";
   }
   if (sameProject && pair === "task:delivery") return "Submitted deliverable";
+  if (sameProject && pair === "task:submission") {
+    return "Awaiting submitted work";
+  }
+  if (
+    sameProject && ["delivery:payment", "submission:payment"].includes(pair)
+  ) return "Verified payment status";
+  if (sameProject && pair === "delivery:revision") {
+    return "Revision requested for submitted work";
+  }
   if (sameProject && pair === "task:revision") return "Revision requested";
   if (sameProject && pair === "revision:delivery") return "Revision feedback";
   if (
