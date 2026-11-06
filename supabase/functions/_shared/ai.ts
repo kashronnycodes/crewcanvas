@@ -12,6 +12,7 @@ import type { Project, SessionActor } from "../../../shared/types.ts";
 import { HttpError, providerStore } from "./backend.ts";
 import { aiFailure } from "../../../shared/ai-errors.ts";
 import { aiConfig, generateStructured } from "./ai-provider.ts";
+import { enforceAiLimit } from "./rate-limit.ts";
 const system = AI_SYSTEM;
 export async function extractBrief(brief: string, actor: SessionActor) {
   return generate("brief", { brief }, actor);
@@ -52,14 +53,7 @@ async function generate(
   actor: SessionActor,
   projectId?: string,
 ) {
-  const allowed = await providerStore("ai_allow", { actorId: actor.id });
-  if (!allowed) {
-    throw new HttpError(
-      429,
-      "RATE_LIMIT",
-      "Please wait a minute before requesting another AI analysis.",
-    );
-  }
+  await enforceAiLimit(actor.id);
   const { model } = aiConfig();
   try {
     const instructions = kind === "brief"
@@ -97,6 +91,6 @@ async function generate(
     if (error instanceof HttpError) throw error;
     const failure = aiFailure(error);
     console.error("AI provider failure", failure.code);
-    throw new HttpError(failure.status, failure.code, failure.message);
+    throw new HttpError(failure.status, failure.code, failure.message, failure.retryAfter);
   }
 }

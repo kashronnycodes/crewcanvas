@@ -99,7 +99,7 @@ test("employer requests a revision and freelancer responds; request persists aft
   await openProjects(page);
   await page.getByRole("button", { name: "Event recap", exact: true }).click();
   await page.getByRole("tab", { name: "Deliverables" }).click();
-  await page.getByRole("button", { name: "Request Revision" }).click();
+  await page.getByRole("button", { name: "Request changes" }).click();
 
   const feedback = "Please adjust the opening title card.";
   await page.getByLabel("Your feedback").fill(feedback);
@@ -189,7 +189,6 @@ test("replaced workspace files retain version history after refresh", async ({ p
     label: "Myron · Employer",
   });
   await page.getByRole("button", { name: "Work map", exact: true }).click();
-  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
   await page.getByRole("button", { name: "Fit to screen" }).click();
   const fileCard = page.locator(".react-flow__node-work").filter({
     hasText: fileName,
@@ -216,7 +215,6 @@ test("replaced workspace files retain version history after refresh", async ({ p
 
   await page.reload();
   await page.getByRole("button", { name: "Work map", exact: true }).click();
-  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
   await page.getByRole("button", { name: "Fit to screen" }).click();
   await page.locator(".react-flow__node-work").filter({ hasText: fileName })
     .getByRole("button", { name: fileName, exact: true })
@@ -265,7 +263,7 @@ test("freelancer proposes extra work and employer accepts it", async ({ page }) 
   await openProjects(page);
   await page.getByRole("button", { name: "Event recap", exact: true }).click();
   await page.getByRole("tab", { name: "Deliverables" }).click();
-  await page.getByRole("button", { name: "Request Revision" }).click();
+  await page.getByRole("button", { name: "Request changes" }).click();
   await page.getByLabel("Your feedback").fill(
     "Please add an alternate ending to the event recap.",
   );
@@ -278,7 +276,7 @@ test("freelancer proposes extra work and employer accepts it", async ({ page }) 
   await openProjects(page);
   await page.getByRole("button", { name: "Event recap", exact: true }).click();
   await page.getByRole("tab", { name: "Revisions" }).click();
-  await page.getByRole("button", { name: /Propose revision fee/ }).click();
+  await page.getByRole("button", { name: /Propose additional work/ }).click();
   await page.getByLabel("Additional price · USD").fill("25.00");
   await page.getByRole("button", { name: "Send proposal" }).click();
   await expect(page.getByText("+ $25.00")).toBeVisible();
@@ -290,7 +288,7 @@ test("freelancer proposes extra work and employer accepts it", async ({ page }) 
   await openProjects(page);
   await page.getByRole("button", { name: "Event recap", exact: true }).click();
   await page.getByRole("tab", { name: "Revisions" }).click();
-  await page.getByRole("button", { name: "Approve revision fee" }).click();
+  await page.getByRole("button", { name: "Accept proposal" }).click();
   await expect(
     page.getByRole("tabpanel", { name: "Revisions" }).getByText(
       "accepted",
@@ -331,7 +329,6 @@ test("workspace canvas group movement persists after refresh", async ({ page }) 
     "The workspace canvas is replaced by the project list on mobile.",
   );
   await page.goto("/");
-  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
 
   const group = page.locator(".react-flow__node-group").filter({
     hasText: "Hackathon Game Winners",
@@ -393,7 +390,6 @@ test("collapsed workspace canvas groups persist after refresh", async ({ page })
     "Canvas group controls are desktop-only; mobile gets a separate responsive check.",
   );
   await page.goto("/");
-  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
   const collapseButton = page.getByRole("button", { name: /^Collapse / }).first();
   const expandedName = await collapseButton.getAttribute("aria-label");
   expect(expandedName).toBeTruthy();
@@ -414,7 +410,6 @@ test("collapsed workspace canvas groups persist after refresh", async ({ page })
   await expect(page.getByText("All changes saved")).toBeVisible();
 
   await page.reload();
-  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
   await expect(page.getByRole("button", { name: collapsedName })).toBeVisible();
 });
 

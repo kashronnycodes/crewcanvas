@@ -2,7 +2,7 @@
 import { AIProviderError } from "./gemini.ts";
 export function aiFailure(error: unknown) {
   if (error instanceof AIProviderError) {
-    return { status: error.status, code: error.code, message: error.message };
+    return { status: error.status, code: error.code, message: error.message, retryAfter: error.retryAfter };
   }
   const value = error && typeof error === "object"
     ? error as {
@@ -61,6 +61,7 @@ export function aiFailure(error: unknown) {
     return {
       status: 429,
       code: "AI_PROVIDER_RATE_LIMIT",
+      retryAfter: retry && /^[1-9][0-9]{0,5}$/.test(retry) ? Number(retry) : 60,
       message: "The AI provider rate limit was reached." + details + wait +
         " Check the API project's model limits before retrying.",
     };
