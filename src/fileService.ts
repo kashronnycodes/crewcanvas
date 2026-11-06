@@ -1,4 +1,6 @@
 import type { WorkspaceFile, WorkspaceSnapshot } from "../shared/types";
+import { DEMO_FILE_ID, DEMO_FILE_PATH, DEMO_FILE_TEXT } from "../shared/publicDemo";
+import { publicDemo } from "./demoSession";
 import { MAX_FILE_BYTES, validateFile } from "../shared/workspace";
 import {
   api,
@@ -32,7 +34,7 @@ async function binary<T>(
       };
       tx.onerror = () => {
         reject(
-          tx.error ??
+          request.error ?? tx.error ??
             new Error("Persistent storage failed. Check available disk space."),
         );
         db.close();
@@ -98,7 +100,8 @@ export const files = {
       );
       const path = `${id}/${crypto.randomUUID()}`;
       onProgress(0);
-      await binary((store) => store.put(file, path), true);
+      const contents = await file.arrayBuffer();
+      await binary((store) => store.put(contents, path), true);
       try {
         const saved = mutateDemo((s, actorId) => {
           const prior = s.files?.find((f) => f.id === id),
@@ -287,9 +290,16 @@ export const files = {
       ? file?.versions.at(-1)
       : file?.versions[version];
     if (!entry) throw new Error("File is no longer available to your account.");
-    const blob = await binary((store) => store.get(entry.path)) as
+    // This immutable synthetic fixture works offline and uses the same access-filtered file lookup.
+    if (publicDemo && fileId === DEMO_FILE_ID && entry.path === DEMO_FILE_PATH) {
+      return URL.createObjectURL(new Blob([DEMO_FILE_TEXT], { type: "text/plain" }));
+    }
+    const stored = await binary((store) => store.get(entry.path)) as
       | Blob
+      | ArrayBuffer
       | undefined;
+    const blob = stored instanceof Blob ? stored : stored instanceof ArrayBuffer
+      ? new Blob([stored], { type: entry.mime }) : undefined;
     if (!blob) {
       throw new Error(
         "This file was removed from browser storage. Upload it again.",

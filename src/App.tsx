@@ -1,5 +1,8 @@
 import InvitationSetup from "./components/InvitationSetup";
 import AccountGate from "./components/AccountGate";
+import DemoGate from "./components/DemoGate";
+import { publicDemo } from "./demoSession";
+import { DEMO_ACCOUNTS } from "../shared/publicDemo";
 import {
   lazy,
   Suspense,
@@ -43,6 +46,7 @@ import { IDS } from "../shared/seed";
 import {
   api,
   inviteMember,
+  getDemoActor,
   mode,
   payments,
   repository,
@@ -63,6 +67,7 @@ const Canvas = lazy(() => import("./components/Canvas"));
 const ProjectBoard = lazy(() => import("./components/ProjectBoard"));
 type Filter = "all" | "attention" | "completed";
 export default function App() {
+  if (publicDemo) return <DemoGate>{(signOut) => <WorkspaceApp demoSignOut={signOut} />}</DemoGate>;
   return mode === "integrated"
     ? (
       <AccountGate>
@@ -78,7 +83,8 @@ export default function App() {
     : <WorkspaceApp />;
 }
 function WorkspaceApp(
-  { authId = null, workspaceId = null, chooseWorkspace }: {
+  { authId = null, workspaceId = null, chooseWorkspace, demoSignOut }: {
+    demoSignOut?: () => void;
     authId?: string | null;
     workspaceId?: string | null;
     chooseWorkspace?: () => void;
@@ -87,7 +93,7 @@ function WorkspaceApp(
   const client = useQueryClient();
 
   const authReady = true;
-  const [actorId, setActorId] = useState(IDS.myron as string);
+  const [actorId, setActorId] = useState(() => getDemoActor() ?? IDS.myron as string);
   const [theme, toggleTheme] = useTheme();
   const [view, setView] = useState<"canvas" | "list" | "board">(() =>
     window.innerWidth < 768 ? "list" : "canvas"
@@ -343,7 +349,7 @@ function WorkspaceApp(
                   setSearch("");
                 }}
               >
-                {Object.entries({
+                {Object.entries(publicDemo ? Object.fromEntries(DEMO_ACCOUNTS.map((a) => [a.id, `${a.name} · ${a.role}`])) : {
                   [IDS.myron]: "Myron · Employer",
                   [IDS.ava]: "Jacob · Worker",
                   [IDS.leo]: "Vincent · Worker",
@@ -364,6 +370,7 @@ function WorkspaceApp(
               >
                 <RotateCcw size={13} />
               </button>
+              {demoSignOut && <button onClick={demoSignOut}><LogOut size={13} />Sign out</button>}
             </div>
           )
           : (

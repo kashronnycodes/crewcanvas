@@ -21,12 +21,14 @@ import {
 import { createDemoWorkspace, migrateDemoRoster } from "./demoRoster";
 import { validateCanvas } from "../shared/workspace";
 import { clearExpiredAuth } from "./authSession";
-export const mode = import.meta.env.VITE_APP_MODE === "integrated"
+import { publicDemo, saveDemoSession, demoSession } from "./demoSession";
+import { publicDemoWorkspace } from "../shared/publicDemo";
+export const mode = !publicDemo && import.meta.env.VITE_APP_MODE === "integrated"
   ? "integrated"
   : "demo";
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-export const supabase = url && key ? createClient(url, key) : null;
+export const supabase = mode === "integrated" && url && key ? createClient(url, key) : null;
 export async function signOutSession() {
   if (!supabase) return;
   const { error } = await supabase.auth.signOut({ scope: "local" });
@@ -58,7 +60,7 @@ export function setActiveWorkspace(id: string | null) {
 export function workspaceHeaders(): Record<string, string> {
   return activeWorkspaceId ? { "X-Workspace-Id": activeWorkspaceId } : {};
 }
-const storageKey = "crewcanvas.demo.v1";
+const storageKey = publicDemo ? "crewcanvas.public-demo.v1" : "crewcanvas.demo.v1";
 let memory: WorkspaceSnapshot | undefined;
 function readDemo(): WorkspaceSnapshot {
   if (memory) return structuredClone(memory);
@@ -73,14 +75,14 @@ function readDemo(): WorkspaceSnapshot {
           Number.isInteger(p.version)
         )
       ) {
-        if (migrateDemoRoster(parsed)) storeDemo(parsed);
+        if (!publicDemo && migrateDemoRoster(parsed)) storeDemo(parsed);
         return parsed;
       }
     }
   } catch {
     /* A malformed local demo is replaced with a known seed. */
   }
-  const seeded = createDemoWorkspace();
+  const seeded = publicDemo ? publicDemoWorkspace() : createDemoWorkspace();
   storeDemo(seeded);
   return structuredClone(seeded);
 }
@@ -139,8 +141,12 @@ export function mutateDemo<T>(
   return result;
 }
 let demoActorId: string | null = null;
+export function getDemoActor() {
+  return demoActorId ?? (publicDemo ? demoSession() : null);
+}
 export function setDemoActor(id: string) {
   demoActorId = id;
+  if (publicDemo) saveDemoSession(id);
 }
 const processed = new Set<string>();
 export const repository: CrewRepository = mode === "demo"
@@ -361,8 +367,12 @@ export const payments: PaymentGateway = {
 export function resetDemo() {
   if (mode !== "demo") throw new Error("Reset is available only in demo mode.");
   processed.clear();
-  demoActorId = null;
-  storeDemo(createDemoWorkspace());
+  if (!publicDemo) demoActorId = null;
+  if (publicDemo) {
+    const snapshot = readDemo();
+    for (const project of snapshot.projects) localStorage.removeItem(`crewcanvas.public-demo.board.${project.id}`);
+  }
+  storeDemo(publicDemo ? publicDemoWorkspace() : createDemoWorkspace());
 }
 export async function inviteMember(email: string, name: string, role: string) {
   const value = invitationSchema.parse({ email, name, role });
