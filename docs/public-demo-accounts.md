@@ -40,3 +40,13 @@ Deploy this branch only after review; nothing is merged or deployed automaticall
 Playwright includes PR #5's three existing suites without its unrelated .env deletion, gitlink or lockfile churn. The file-storage ArrayBuffer fix from that PR is retained for WebKit compatibility. The new public-demo suite runs separately from opt-in real backend tests. Invalid credentials in the simulated suite are tested by explicitly mocking the Auth response; this is not evidence of a real backend login.
 
 Commands: `npm run build`, `npm test`, `npm run test:e2e`, `npm run test:e2e:integrated`, `npm run test:endpoint-security`, `npm run test:paypal-config`, `npm run test:paypal-flow -- --verify`. For real browser auth tests set `CREW_E2E_BASE_URL` to the dedicated deployment and supply the operator password/generation. Never put passwords in reports or command arguments. See the accompanying verification results for what actually ran.
+
+## Files changed
+
+UI/session: `src/App.tsx`, `src/components/AccountGate.tsx`, new `src/components/DemoAccounts.tsx`, `src/components/DemoGate.tsx`, `src/demoSession.ts`, and `src/redesign.css`.
+
+Fixtures/services: new `shared/publicDemo.ts`, plus `src/services.ts`, `src/fileService.ts` and `src/boardService.ts`.
+
+Operator setup: new `scripts/demo-safety.mjs` and `scripts/provision-demo.mjs`; commands in `package.json`.
+
+Tests: new `tests/publicDemo.test.ts`, `playwright.config.ts`, `playwright.integrated.config.ts`, `e2e/public-demo.spec.ts`, `e2e/integrated/demo-auth.spec.ts`, and the three restored PR #5 suites (`e2e/smoke.spec.ts`, `e2e/workspace.spec.ts`, `e2e/extended-workflows.spec.ts`). Handoff: `README.md`, this document and `docs/public-demo-verification.md`.
