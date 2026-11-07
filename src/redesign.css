@@ -189,6 +189,21 @@ body .loading-screen, body .login-screen { background: var(--canvas); color: var
 body .loading-screen .brand, body .loading-screen h2 { color: var(--text); }
 body .login-card { background: var(--surface); border: 1px solid var(--line); }
 body .login-card > p, body .login-card > small, body .login-footer { color: var(--secondary); }
+body .login-screen { justify-content: flex-start; gap: 24px; }
+.login-screen > .brand, .login-screen > .login-card, .login-screen > .login-footer { flex-shrink: 0; }
+.demo-accounts { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 20px; }
+.demo-accounts h2 { color: var(--text); font: 400 23px/1.25 var(--font-serif); margin: 0 0 8px; }
+.demo-accounts p { color: var(--secondary); font: 12px/1.6 var(--font-sans); margin: 0 0 12px; }
+.demo-accounts .demo-explanation { font-size: 11px; }
+.demo-account-list { display: grid; gap: 10px; }
+.demo-account { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; min-width: 0; }
+.demo-account > div { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 7px; }
+.demo-account h3 { color: var(--text); font: 500 13px/1.4 var(--font-sans); margin: 0; }
+.demo-role { color: var(--secondary); font: 10px/1.5 var(--font-mono); }
+.demo-account .button { min-height: 44px; width: 100%; text-decoration: none; }
+.demo-footer-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; font-size: 11px; }
+.demo-footer-actions a { color: var(--secondary); }
+.demo-footer-actions .button { min-height: 44px; }
 @media (hover:hover) and (pointer:fine) {
   body .person-open:hover .avatar-frame { border-color: var(--line-strong); outline: 1px solid var(--line-strong); outline-offset: 3px; transform: none; }
   body .icon-button:hover, body .sidebar button:hover, body .canvas-tools button:hover, body .zoom-tools button:hover, body .popover button:hover, body .button.secondary:hover { background: transparent; color: var(--text); outline: 1px solid var(--line); }

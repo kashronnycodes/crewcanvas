@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
 export class AIProviderError extends Error {
-  constructor(public status: number, public code: string, message: string) {
+  constructor(public status: number, public code: string, message: string, public retryAfter?: number) {
     super(message);
     this.name = "AIProviderError";
   }
@@ -140,6 +140,7 @@ export async function generateGemini<T>(
         "AI_PROVIDER_RATE_LIMIT",
         "Gemini quota or rate limit was reached. Check this API project's limits in Google AI Studio." +
           wait,
+        retry && /^[1-9][0-9]{0,5}$/.test(retry) ? Number(retry) : 60,
       );
     }
     if (response.status === 400) {

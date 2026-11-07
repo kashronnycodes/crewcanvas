@@ -12,9 +12,10 @@ import "./redesign.css";
 import "./workspace.css";
 import "./studio.css";
 import { applyTheme, initialTheme } from "./theme";
+import { retryQuery } from "../shared/http-errors";
 applyTheme(initialTheme());
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, staleTime: 10_000 } },
+  defaultOptions: { queries: { retry: retryQuery, staleTime: 10_000 } },
 });
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

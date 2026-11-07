@@ -1,5 +1,8 @@
 import InvitationSetup from "./components/InvitationSetup";
 import AccountGate from "./components/AccountGate";
+import DemoGate from "./components/DemoGate";
+import { publicDemo } from "./demoSession";
+import { DEMO_ACCOUNTS } from "../shared/publicDemo";
 import {
   lazy,
   Suspense,
@@ -37,12 +40,14 @@ import {
   X,
 } from "lucide-react";
 import type { CanvasLayout, Person, WorkspaceSnapshot } from "../shared/types";
+import type { ProjectTab } from "../shared/freelance-canvas";
 import { indicators, todayIn, uid } from "../shared/domain";
 import type { Command } from "../shared/validation";
 import { IDS } from "../shared/seed";
 import {
   api,
   inviteMember,
+  getDemoActor,
   mode,
   payments,
   repository,
@@ -63,6 +68,7 @@ const Canvas = lazy(() => import("./components/Canvas"));
 const ProjectBoard = lazy(() => import("./components/ProjectBoard"));
 type Filter = "all" | "attention" | "completed";
 export default function App() {
+  if (publicDemo) return <DemoGate>{(signOut) => <WorkspaceApp demoSignOut={signOut} />}</DemoGate>;
   return mode === "integrated"
     ? (
       <AccountGate>
@@ -78,7 +84,8 @@ export default function App() {
     : <WorkspaceApp />;
 }
 function WorkspaceApp(
-  { authId = null, workspaceId = null, chooseWorkspace }: {
+  { authId = null, workspaceId = null, chooseWorkspace, demoSignOut }: {
+    demoSignOut?: () => void;
     authId?: string | null;
     workspaceId?: string | null;
     chooseWorkspace?: () => void;
@@ -87,7 +94,7 @@ function WorkspaceApp(
   const client = useQueryClient();
 
   const authReady = true;
-  const [actorId, setActorId] = useState(IDS.myron as string);
+  const [actorId, setActorId] = useState(() => getDemoActor() ?? IDS.myron as string);
   const [theme, toggleTheme] = useTheme();
   const [view, setView] = useState<"canvas" | "list" | "board">(() =>
     window.innerWidth < 768 ? "list" : "canvas"
@@ -98,6 +105,7 @@ function WorkspaceApp(
     string | undefined
   >();
   const [filter, setFilter] = useState<Filter>("all");
+  const [selectedTab, setSelectedTab] = useState<ProjectTab>("overview");
   const [newProject, setNewProject] = useState(false);
   const [invite, setInvite] = useState(false);
   const [help, setHelp] = useState(false);
@@ -122,11 +130,17 @@ function WorkspaceApp(
   }, [toast]);
   const notify = useCallback((message: string) => setToast(message), []);
   const onSelect = useCallback(
-    (id: string, nextFilter: Filter = "all", projectId?: string) => {
+    (
+      id: string,
+      nextFilter: Filter = "all",
+      projectId?: string,
+      tab: ProjectTab = "overview",
+    ) => {
       document.dispatchEvent(new Event("crewcanvas:exit-focus"));
       setSelected(id);
       setFilter(nextFilter);
       setSelectedProjectId(projectId);
+      setSelectedTab(tab);
     },
     [],
   );
@@ -343,7 +357,7 @@ function WorkspaceApp(
                   setSearch("");
                 }}
               >
-                {Object.entries({
+                {Object.entries(publicDemo ? Object.fromEntries(DEMO_ACCOUNTS.map((a) => [a.id, `${a.name} · ${a.role}`])) : {
                   [IDS.myron]: "Myron · Employer",
                   [IDS.ava]: "Jacob · Worker",
                   [IDS.leo]: "Vincent · Worker",
@@ -364,6 +378,7 @@ function WorkspaceApp(
               >
                 <RotateCcw size={13} />
               </button>
+              {demoSignOut && <button onClick={demoSignOut}><LogOut size={13} />Sign out</button>}
             </div>
           )
           : (
@@ -610,6 +625,8 @@ function WorkspaceApp(
                     onNotify={notify}
                     onInvite={() => setInvite(true)}
                     selectedPersonId={selected ?? undefined}
+                    onCommand={command}
+                    busy={busy}
                   />
                 </FocusCanvas>
               )
@@ -634,11 +651,12 @@ function WorkspaceApp(
       </div>
       {selectedPerson && (
         <ProjectDrawer
-          key={`${selectedPerson.id}-${filter}`}
+          key={`${selectedPerson.id}-${filter}-${selectedProjectId}-${selectedTab}`}
           person={selectedPerson}
           snapshot={snapshot}
           initialFilter={filter}
           initialProjectId={selectedProjectId}
+          initialTab={selectedTab}
           onClose={() => setSelected(null)}
           onCommand={command}
           onIssue={(id) =>

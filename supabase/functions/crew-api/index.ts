@@ -38,6 +38,7 @@ import {
 import { validateCanvas } from "../../../shared/workspace.ts";
 import { workspaceCommand } from "../_shared/workspace-ai.ts";
 import { checked, onboarding, tokenHash } from "../_shared/onboarding.ts";
+import { enforceRateLimit, enforceRequestLimit } from "../_shared/rate-limit.ts";
 const idBody = z.object({ projectId: z.uuid() }).strict();
 export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return respond(req, {});
@@ -52,6 +53,7 @@ export async function handler(req: Request): Promise<Response> {
     }
     const path = new URL(req.url).pathname.split("/crew-api/")[1] ?? "";
     const identity = await authenticatedUser(req);
+    await enforceRequestLimit(identity.id, path, req.method);
     const setup = await onboarding(req, path, identity);
     if (setup) return setup;
     const user = await actor(req, identity);
@@ -284,10 +286,12 @@ export async function handler(req: Request): Promise<Response> {
     if (path === "payments/issue") {
       const { projectId } = idBody.parse(input);
       const requestId = z.uuid().parse(req.headers.get("Idempotency-Key"));
+      await enforceRateLimit(identity.id, ["payment_issue_project"], projectId);
       return respond(req, await issueInvoice(projectId, user, requestId));
     }
     if (path === "payments/reconcile") {
       const { projectId } = idBody.parse(input);
+      await enforceRateLimit(identity.id, ["payment_reconcile_project"], projectId);
       await reconcileProject(projectId, user);
       return respond(req, { ok: true });
     }
