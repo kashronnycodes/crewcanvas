@@ -22,6 +22,7 @@ async function workspace(page: Page) {
 test("AI throttling displays retry guidance and restores the action", async ({ page }) => {
   await workspace(page);
   await page.getByRole("button", { name: "Work map", exact: true }).click();
+  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
   await page.getByLabel("Ask your workspace", { exact: true }).fill("Summarize project progress");
   await page.getByRole("button", { name: "Run workspace command" }).click();
   await expect(page.getByText("Too many requests. Please try again in 27 seconds.", { exact: true })).toBeVisible();
