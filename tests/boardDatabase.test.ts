@@ -32,6 +32,7 @@ beforeAll(async () => {
       "20261028110143_initial_schema.sql",
       "20261030210134_intelligent_canvas.sql",
       "20261031221200_project_whiteboards.sql",
+      "20261107180709_collaboration_board_metadata.sql",
     ]
   ) {
     await db.exec(
@@ -222,6 +223,49 @@ describe.sequential("project whiteboard authorization, persistence and conflicts
         }),
       ],
     );
+  });
+  it("persists optional presentation metadata for both collaborators and rejects foreign task references", async () => {
+    await actor(0);
+    const id = uid(), groupId = uid();
+    await db.query(
+      "insert into public.board_objects(id,project_id,data) values($1,$2,$3)",
+      [
+        id,
+        seed.projects[0].id,
+        JSON.stringify({
+          ...newBoardData("note"),
+          locked: true,
+          groupId,
+          taskId: seed.projects[0].id,
+        }),
+      ],
+    );
+    await actor(1);
+    const result = await db.query<
+      { data: { locked: boolean; groupId: string } }
+    >("select data from public.board_objects where id=$1", [id]);
+    expect(result.rows[0].data.locked).toBe(true);
+    expect(result.rows[0].data.groupId).toBe(groupId);
+    for (
+      const fields of [{ taskId: seed.projects[1].id }, { locked: "yes" }, {
+        fileVersion: 99,
+      }, { groupId: "invalid" }]
+    ) {
+      await expect(
+        db.query(
+          "insert into public.board_objects(project_id,data) values($1,$2)",
+          [
+            seed.projects[0].id,
+            JSON.stringify({ ...newBoardData("note"), ...fields }),
+          ],
+        ),
+      ).rejects.toThrow();
+    }
+    await actor(2);
+    expect(
+      (await db.query("select id from public.board_objects where id=$1", [id]))
+        .rows,
+    ).toHaveLength(0);
   });
   it("allows scoped feedback and replies with server-derived author attribution", async () => {
     await actor(1);

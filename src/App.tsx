@@ -46,8 +46,8 @@ import type { Command } from "../shared/validation";
 import { IDS } from "../shared/seed";
 import {
   api,
-  inviteMember,
   getDemoActor,
+  inviteMember,
   mode,
   payments,
   repository,
@@ -66,9 +66,14 @@ import FocusCanvas from "./components/FocusCanvas";
 import ProjectIndex from "./components/ProjectIndex";
 const Canvas = lazy(() => import("./components/Canvas"));
 const ProjectBoard = lazy(() => import("./components/ProjectBoard"));
+const WorkflowCanvas = lazy(() => import("./components/WorkflowCanvas"));
 type Filter = "all" | "attention" | "completed";
 export default function App() {
-  if (publicDemo) return <DemoGate>{(signOut) => <WorkspaceApp demoSignOut={signOut} />}</DemoGate>;
+  if (publicDemo) {
+    return (
+      <DemoGate>{(signOut) => <WorkspaceApp demoSignOut={signOut} />}</DemoGate>
+    );
+  }
   return mode === "integrated"
     ? (
       <AccountGate>
@@ -94,11 +99,13 @@ function WorkspaceApp(
   const client = useQueryClient();
 
   const authReady = true;
-  const [actorId, setActorId] = useState(() => getDemoActor() ?? IDS.myron as string);
-  const [theme, toggleTheme] = useTheme();
-  const [view, setView] = useState<"canvas" | "list" | "board">(() =>
-    window.innerWidth < 768 ? "list" : "canvas"
+  const [actorId, setActorId] = useState(() =>
+    getDemoActor() ?? IDS.myron as string
   );
+  const [theme, toggleTheme] = useTheme();
+  const [view, setView] = useState<
+    "studio" | "canvas" | "list" | "board" | "revisions"
+  >("studio");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<
@@ -108,6 +115,7 @@ function WorkspaceApp(
   const [selectedTab, setSelectedTab] = useState<ProjectTab>("overview");
   const [newProject, setNewProject] = useState(false);
   const [invite, setInvite] = useState(false);
+  const [invitationRole, setInvitationRole] = useState<string | undefined>();
   const [help, setHelp] = useState(false);
   const [inbox, setInbox] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
@@ -357,15 +365,21 @@ function WorkspaceApp(
                   setSearch("");
                 }}
               >
-                {Object.entries(publicDemo ? Object.fromEntries(DEMO_ACCOUNTS.map((a) => [a.id, `${a.name} · ${a.role}`])) : {
-                  [IDS.myron]: "Myron · Employer",
-                  [IDS.ava]: "Jacob · Worker",
-                  [IDS.leo]: "Vincent · Worker",
-                  [IDS.mia]: "Jeshua · Worker",
-                  [IDS.nina]: "Myron Manago · Worker",
-                  [IDS.ethan]: "Ethan · Worker",
-                  [IDS.sofia]: "Eya · Worker",
-                }).map(([id, label]) => (
+                {Object.entries(
+                  publicDemo
+                    ? Object.fromEntries(
+                      DEMO_ACCOUNTS.map((a) => [a.id, `${a.name} · ${a.role}`]),
+                    )
+                    : {
+                      [IDS.myron]: "Myron · Employer",
+                      [IDS.ava]: "Jacob · Worker",
+                      [IDS.leo]: "Vincent · Worker",
+                      [IDS.mia]: "Jeshua · Worker",
+                      [IDS.nina]: "Myron Manago · Worker",
+                      [IDS.ethan]: "Ethan · Worker",
+                      [IDS.sofia]: "Eya · Worker",
+                    },
+                ).map(([id, label]) => (
                   <option key={id} value={id}>
                     {label}
                   </option>
@@ -378,7 +392,11 @@ function WorkspaceApp(
               >
                 <RotateCcw size={13} />
               </button>
-              {demoSignOut && <button onClick={demoSignOut}><LogOut size={13} />Sign out</button>}
+              {demoSignOut && (
+                <button onClick={demoSignOut}>
+                  <LogOut size={13} />Sign out
+                </button>
+              )}
             </div>
           )
           : (
@@ -423,6 +441,13 @@ function WorkspaceApp(
               <Clapperboard size={20} />
               {pendingReview > 0 && <i />}
             </button>
+            <button
+              title="Revisions"
+              aria-label="Revisions page"
+              onClick={() => setView("revisions")}
+            >
+              <RotateCcw size={20} />
+            </button>
           </div>
           <div className="sidebar-bottom">
             <button
@@ -445,7 +470,7 @@ function WorkspaceApp(
           </div>
         </aside>
         <main
-          className={`main-workspace ${selectedPerson ? "drawer-visible" : ""}`}
+          className={`main-workspace ${view === "studio" ? "studio-active" : ""} ${selectedPerson ? "drawer-visible" : ""}`}
         >
           <div className="workspace-toolbar">
             <div className="page-heading">
@@ -557,6 +582,18 @@ function WorkspaceApp(
           <div className="canvas-nav">
             <div className="view-toggle" aria-label="Workspace view">
               <button
+                className={view === "studio" ? "selected" : ""}
+                onClick={() => setView("studio")}
+              >
+                Project studio
+              </button>
+              <button
+                className={view === "revisions" ? "selected" : ""}
+                onClick={() => setView("revisions")}
+              >
+                Revisions
+              </button>
+              <button
                 aria-pressed={view === "canvas" && employer}
                 className={view === "canvas" && employer ? "selected" : ""}
                 onClick={() => setView("canvas")}
@@ -605,7 +642,52 @@ function WorkspaceApp(
               </div>
             }
           >
-            {view === "board"
+            {view === "revisions"
+              ? (
+                <section className="revision-queue">
+                  <span className="eyebrow">
+                    DELIVERY / FEEDBACK / NEXT VERSION
+                  </span>
+                  <h2>Revisions, in one place.</h2>
+                  <p>
+                    Select a task to preview its delivery, add feedback or
+                    review a fee proposal.
+                  </p>
+                  <div>
+                    {snapshot.projects.map((p) => (
+                      <article key={p.id}>
+                        <h3>{p.title}</h3>
+                        <p>
+                          {p.deliveries.at(-1)?.label ?? "No delivery yet"} ·
+                          {" "}
+                          {p.revisions.length} revision requests
+                        </p>
+                        <button
+                          className="button secondary"
+                          onClick={() =>
+                            onSelect(p.workerId, "all", p.id, "revisions")}
+                        >
+                          Open revisions <ArrowRight size={14} />
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )
+              : view === "studio"
+              ? (
+                <WorkflowCanvas
+                  snapshot={snapshot}
+                  onSave={saveLayout}
+                  onOpen={onSelect}
+                  onCommand={command}
+                  onInvite={(role) => { setInvitationRole(role); setInvite(true); }}
+                  notify={notify}
+                  detailsOpen={!!selectedPerson}
+                  onDismissDetails={() => setSelected(null)}
+                />
+              )
+              : view === "board"
               ? (
                 <ProjectBoard
                   snapshot={snapshot}
@@ -657,6 +739,7 @@ function WorkspaceApp(
           initialFilter={filter}
           initialProjectId={selectedProjectId}
           initialTab={selectedTab}
+          studio={view === "studio"}
           onClose={() => setSelected(null)}
           onCommand={command}
           onIssue={(id) =>
@@ -683,7 +766,7 @@ function WorkspaceApp(
         />
       )}
       {invite && (
-        <Invitation onClose={() => setInvite(false)} onNotify={notify} />
+        <Invitation initialRole={invitationRole} onClose={() => { setInvite(false); setInvitationRole(undefined); }} onNotify={notify} />
       )}
       {inbox && (
         <Modal
@@ -880,20 +963,22 @@ function ShieldIcon() {
 function Invitation({
   onClose,
   onNotify,
+  initialRole,
 }: {
   onClose: () => void;
   onNotify: (s: string) => void;
+  initialRole?: string;
 }) {
   const client = useQueryClient();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState("Video Editor");
+  const [role, setRole] = useState(initialRole ?? "Video Editor");
   const [result, setResult] = useState("");
   const [busy, setBusy] = useState(false);
   return (
     <Modal
       title="Good people make great work"
-      description="Invite a worker to Northstar Creative. Invitations never grant employer access."
+      description="Invite a freelancer to this workspace. Invitations never grant employer access."
       onClose={onClose}
     >
       <form
@@ -939,6 +1024,7 @@ function Invitation({
             maxLength={80}
           />
         </label>
+        {initialRole && <p className="fine-print">Once they accept, use “+ Add member” in the {initialRole} roster to place them in this project.</p>}
         <button className="button primary" disabled={busy}>
           <UserPlus size={16} />
           {mode === "demo" ? "Simulate invitation" : "Generate invitation link"}

@@ -21,15 +21,19 @@ import {
 import { createDemoWorkspace, migrateDemoRoster } from "./demoRoster";
 import { validateCanvas } from "../shared/workspace";
 import { clearExpiredAuth } from "./authSession";
-import { publicDemo, saveDemoSession, demoSession } from "./demoSession";
+import { demoSession, publicDemo, saveDemoSession } from "./demoSession";
 import { publicDemoWorkspace } from "../shared/publicDemo";
 import { responseError } from "../shared/http-errors";
-export const mode = !publicDemo && import.meta.env.VITE_APP_MODE === "integrated"
-  ? "integrated"
-  : "demo";
+import { visibleWorkflow } from "../shared/workflow";
+export const mode =
+  !publicDemo && import.meta.env.VITE_APP_MODE === "integrated"
+    ? "integrated"
+    : "demo";
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-export const supabase = mode === "integrated" && url && key ? createClient(url, key) : null;
+export const supabase = mode === "integrated" && url && key
+  ? createClient(url, key)
+  : null;
 export async function signOutSession() {
   if (!supabase) return;
   const { error } = await supabase.auth.signOut({ scope: "local" });
@@ -61,7 +65,9 @@ export function setActiveWorkspace(id: string | null) {
 export function workspaceHeaders(): Record<string, string> {
   return activeWorkspaceId ? { "X-Workspace-Id": activeWorkspaceId } : {};
 }
-const storageKey = publicDemo ? "crewcanvas.public-demo.v1" : "crewcanvas.demo.v1";
+const storageKey = publicDemo
+  ? "crewcanvas.public-demo.v1"
+  : "crewcanvas.demo.v1";
 let memory: WorkspaceSnapshot | undefined;
 function readDemo(): WorkspaceSnapshot {
   if (memory) return structuredClone(memory);
@@ -128,7 +134,11 @@ export async function api(path: string, body?: unknown, requestId?: string) {
   });
   const result = await response.json();
   if (!response.ok) {
-    throw responseError(response.status, response.headers.get("Retry-After"), result);
+    throw responseError(
+      response.status,
+      response.headers.get("Retry-After"),
+      result,
+    );
   }
   return result;
 }
@@ -165,7 +175,16 @@ export const repository: CrewRepository = mode === "demo"
         s.workspaceActivity = (s.workspaceActivity ?? []).filter((e) =>
           s.projects.some((p) => p.id === e.projectId)
         );
-        s.layout = { ...s.layout, people: [], groups: [] };
+        s.layout = {
+          ...s.layout,
+          people: [],
+          groups: [],
+          workflow: visibleWorkflow(
+            s.layout.workflow ?? [],
+            s.projects,
+            actor.id,
+          ),
+        };
       }
       return s;
     },
@@ -196,12 +215,23 @@ export const repository: CrewRepository = mode === "demo"
           throw new Error("Choose a workspace worker.");
         }
         const a = makeAgreement(command.terms, actor.id, null);
+        if (command.organization) {
+          const role = s.layout.workflow?.find((c) =>
+            c.id === command.organization!.collectionId
+          )?.roles.find((r) => r.id === command.organization!.roleId);
+          if (!role?.members.includes(command.workerId)) {
+            throw new Error(
+              "Assign a member of this project role.",
+            );
+          }
+        }
         a.status = command.publish ? "proposed" : "draft";
         s.projects.push({
           id: uid(),
           workspaceId: s.id,
           workerId: command.workerId,
           title: command.title,
+          organization: command.organization,
           state: "awaiting_agreement",
           origin: "sample",
           activeAgreementId: null,
@@ -371,7 +401,9 @@ export function resetDemo() {
   if (!publicDemo) demoActorId = null;
   if (publicDemo) {
     const snapshot = readDemo();
-    for (const project of snapshot.projects) localStorage.removeItem(`crewcanvas.public-demo.board.${project.id}`);
+    for (const project of snapshot.projects) {
+      localStorage.removeItem(`crewcanvas.public-demo.board.${project.id}`);
+    }
   }
   storeDemo(publicDemo ? publicDemoWorkspace() : createDemoWorkspace());
 }

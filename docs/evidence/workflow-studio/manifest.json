@@ -1,0 +1,60 @@
+{
+  "branch": "codex/collaboration-workflow",
+  "baseCommit": "19fb8848be7548a9615cbc03fa663f5fc9075292",
+  "deploymentPerformed": false,
+  "hostedMigrationApplied": false,
+  "checks": {
+    "vitest": {
+      "passed": 175,
+      "files": 28,
+      "exit": 0
+    },
+    "playwright": {
+      "passed": 79,
+      "skipped": 5,
+      "exit": 0
+    },
+    "studioBrowser": {
+      "passed": 9,
+      "exit": 0
+    },
+    "productionBuild": {
+      "exit": 0
+    },
+    "serverTypeCheck": {
+      "entrypoints": 3,
+      "exit": 0
+    }
+  },
+  "sourceSha256": {
+    "e2e/extended-workflows.spec.ts": "243b3a118b15146fba9ecc8b4325e4d6a4e465bfcf2374e4212c1e659c9e61dd",
+    "e2e/workflow-studio.spec.ts": "c51b668e2ea2f688f496ffc90f0b02fcbfe146f3d9e2abfc49bbc6bbb95442d8",
+    "shared/board.ts": "4918c8cbe6342c87d7a1fac76ab3db56a4c44b13bf9b919feb328a461c8bd0bf",
+    "shared/domain.ts": "3221de96a35667c51da294e780831f51b145ad0dfef98077d98f71522d98d28d",
+    "shared/freelance-canvas.ts": "c308a93d049b5372c6ae7750101cb89a1bdb218ba46e36def2be91fd711c0a0c",
+    "shared/types.ts": "d3d6a5cf7e00a57f9eb999ce14c4e7c37a8328db8795cdbe6c3a9bba9bd109ca",
+    "shared/validation.ts": "73d648a7003e780d1fa7805bede3140ea0c4229acf20b9cb2d11de019e09ec01",
+    "shared/workflow.ts": "3de06972d2bedcc69ace93bdc16119d74ace80081b4fa1bf9cf864e83f6bbfbe",
+    "shared/workspace.ts": "498df5226c1d0dedb6392eae89163b8b295241c37070a181a6010fa81249c9ca",
+    "src/App.tsx": "1832c78f34fc3f41ecd542ad095bb3ac8cb399a8ca9ec7634c5915fa4c4862bb",
+    "src/boardService.ts": "778a96549c8dc23111b8d9a84db702431d84117db6d9903bb027d3c25d90ee49",
+    "src/components/DeliverablePreview.tsx": "d46061aab0845b77dc9ebe7f4a7f2ebde8188c13c0f1af5af31d145326bd2df5",
+    "src/components/ProjectBoard.tsx": "1dc720408f7e3fcbd18d8ff1cbeaac4b8476c06697fbbbbc614c2a6c5ff899e5",
+    "src/components/ProjectDrawer.tsx": "db6ab349bdacf2dca3ae455be79bd80a0cf80eaf56546d2c7433ab478ad4b3da",
+    "src/components/ProjectForm.tsx": "cafdb593d32711c0f09358c1c3bf3eefe2dc2aac45c17348205d8bdfeaea10c6",
+    "src/components/ToolPopover.tsx": "05905308349ce958d8a7bc55fb81c7dd0ebca154187e2370a162143e2c011874",
+    "src/components/WorkflowCanvas.tsx": "b853d7557ecfcd3390723115da0fd03ffb76557461972f21b13973185fa80504",
+    "src/components/WorkspaceFiles.tsx": "59722afe462404b47e4949e6db012473153b7d8e0dac607aba940cdcbc5b9266",
+    "src/main.tsx": "b5664e0d0a74f1f9d58e5d1dd62e657ed5eafc9706203cc3a47ee9b02dc18bf6",
+    "src/services.ts": "79f433117a702948f639ad251de9adb5ede51e41a3979846354bd24aa0ca37b6",
+    "src/workflow.css": "79993773271bae190867e6baf8dc4d32252fd00e0e0423044660a68ee73bd193",
+    "supabase/functions/_shared/backend.ts": "75b012671143b6a82fa34e15f2bba33af9e96867898fad1e627bd740379549e8",
+    "supabase/functions/crew-api/index.ts": "604f82a409a3fdd0dbf210797e15abffae0feb6027f7063ee0aed2973b5bdbc4",
+    "supabase/migrations/20261107154727_collaboration_board_metadata.sql": "a0c47acf1400930fd0e9b26af86479d057326c26c9ef066e74d2bd85f1b58335",
+    "tests/app.test.tsx": "9e231f3ae521c7072ef8362b23c12d6d2f860617087d8e1902ecd6bcd9c92a2f",
+    "tests/boardDatabase.test.ts": "89da639c2e1e52116ba5ec5cc7ac0635184f827424587ec09e9d4aa192ac19b8",
+    "tests/fileDelivery.test.tsx": "63e3655d70f1078255eb2142d329f99a0550330988e471af21287345aa2a154e",
+    "tests/simpleWorkflowUI.test.tsx": "7dcd3cdfcf9132233261210b08fb10581083b867d5b31fb96c85e47e13350c15",
+    "tests/workflow.test.ts": "729cc9f86b25bf95bd9be4c1fe0975bdaa072a5eb1c0000ea405a19d4a8c4c88"
+  }
+}

@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.80.0";
 import { assertProjectAccess, DomainError } from "../../../shared/domain.ts";
+import { visibleWorkflow } from "../../../shared/workflow.ts";
 import type {
   Person,
   Project,
@@ -83,7 +84,12 @@ export function errorResponse(req: Request, error: unknown) {
   if (error instanceof HttpError) {
     const response = respond(
       req,
-      { ok: false, code: error.code, message: error.message, error: { code: error.code, message: error.message } },
+      {
+        ok: false,
+        code: error.code,
+        message: error.message,
+        error: { code: error.code, message: error.message },
+      },
       error.status,
     );
     if (error.retryAfter !== undefined || error.status === 429) {
@@ -293,13 +299,11 @@ export async function snapshot(user: SessionActor): Promise<WorkspaceSnapshot> {
   }
   const projects = await projectQuery;
   if (projects.error) throw projects.error;
-  const layout = user.role === "employer"
-    ? await db
-      .from("canvas_layouts")
-      .select("data")
-      .eq("workspace_id", user.workspaceId)
-      .single()
-    : null;
+  const layout = await db
+    .from("canvas_layouts")
+    .select("data")
+    .eq("workspace_id", user.workspaceId)
+    .single();
   if (layout?.error) throw layout.error;
   let filesQuery = db.from("workspace_files").select("data,project_id").eq(
     "workspace_id",
@@ -326,6 +330,9 @@ export async function snapshot(user: SessionActor): Promise<WorkspaceSnapshot> {
   if (files.error) throw files.error;
   if (activity.error) throw activity.error;
   if (notifications.error) throw notifications.error;
+  const visibleProjects = await Promise.all(
+    projects.data.map((p) => loadProject(p.id)),
+  );
   return {
     notifications: notifications.data,
     files: files.data.map((f) => f.data),
@@ -340,14 +347,27 @@ export async function snapshot(user: SessionActor): Promise<WorkspaceSnapshot> {
     name: ws.data.name,
     timezone: ws.data.timezone,
     people,
-    projects: await Promise.all(projects.data.map((p) => loadProject(p.id))),
-    layout: layout?.data?.data ?? {
-      schemaVersion: 1,
-      version: 0,
-      people: [],
-      groups: [],
-      viewport: { x: 0, y: 0, zoom: 1 },
-    },
+    projects: visibleProjects,
+    layout: user.role === "worker"
+      ? {
+        schemaVersion: 1,
+        version: 0,
+        people: [],
+        groups: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        workflow: visibleWorkflow(
+          layout?.data?.data?.workflow ?? [],
+          visibleProjects,
+          user.id,
+        ),
+      }
+      : layout?.data?.data ?? {
+        schemaVersion: 1,
+        version: 0,
+        people: [],
+        groups: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
     actorId: user.id,
     sellerConnectionId: "",
   };

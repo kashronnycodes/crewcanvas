@@ -189,6 +189,7 @@ test("replaced workspace files retain version history after refresh", async ({ p
     label: "Myron · Employer",
   });
   await page.getByRole("button", { name: "Work map", exact: true }).click();
+  await page.getByRole("button", { name: "Work map", exact: true }).click();
   await page.getByRole("button", { name: "Details & tools", exact: true }).click();
   await page.getByRole("button", { name: "Fit to screen" }).click();
   const fileCard = page.locator(".react-flow__node-work").filter({
@@ -215,6 +216,7 @@ test("replaced workspace files retain version history after refresh", async ({ p
     .toBeVisible();
 
   await page.reload();
+  await page.getByRole("button", { name: "Work map", exact: true }).click();
   await page.getByRole("button", { name: "Work map", exact: true }).click();
   await page.getByRole("button", { name: "Details & tools", exact: true }).click();
   await page.getByRole("button", { name: "Fit to screen" }).click();
@@ -331,6 +333,7 @@ test("workspace canvas group movement persists after refresh", async ({ page }) 
     "The workspace canvas is replaced by the project list on mobile.",
   );
   await page.goto("/");
+  await page.getByRole("button", { name: "Work map", exact: true }).click();
   await page.getByRole("button", { name: "Details & tools", exact: true }).click();
 
   const group = page.locator(".react-flow__node-group").filter({
@@ -393,6 +396,7 @@ test("collapsed workspace canvas groups persist after refresh", async ({ page })
     "Canvas group controls are desktop-only; mobile gets a separate responsive check.",
   );
   await page.goto("/");
+  await page.getByRole("button", { name: "Work map", exact: true }).click();
   await page.getByRole("button", { name: "Details & tools", exact: true }).click();
   const collapseButton = page.getByRole("button", { name: /^Collapse / }).first();
   const expandedName = await collapseButton.getAttribute("aria-label");
@@ -414,6 +418,7 @@ test("collapsed workspace canvas groups persist after refresh", async ({ page })
   await expect(page.getByText("All changes saved")).toBeVisible();
 
   await page.reload();
+  await page.getByRole("button", { name: "Work map", exact: true }).click();
   await page.getByRole("button", { name: "Details & tools", exact: true }).click();
   await expect(page.getByRole("button", { name: collapsedName })).toBeVisible();
 });
