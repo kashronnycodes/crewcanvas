@@ -13,6 +13,7 @@ vi.mock(
   "../src/components/Canvas",
   () => ({ default: () => <div>Canvas</div>, StatusBadges: () => null }),
 );
+vi.mock("../src/components/WorkflowCanvas", () => ({ default: () => <div>Studio</div> }));
 beforeEach(() => {
   resetDemo();
   Object.defineProperty(window, "matchMedia", {
@@ -62,6 +63,7 @@ it("submits an uploaded file without requiring a Google Drive URL", async () => 
     name: "Demo viewing role",
   });
   fireEvent.change(role, { target: { value: IDS.ava } });
+  fireEvent.click(await screen.findByRole("button", { name: /^Projects$/ }));
   fireEvent.click(
     await screen.findByRole("button", { name: "Recruitment cut" }),
   );

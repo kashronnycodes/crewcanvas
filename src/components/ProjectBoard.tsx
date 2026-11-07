@@ -13,6 +13,7 @@ import {
   ReactFlowProvider,
   useReactFlow,
   useViewport,
+  useNodesInitialized,
 } from "@xyflow/react";
 import {
   ArrowRight,
@@ -25,6 +26,7 @@ import {
   MessageSquare,
   MousePointer2,
   Pencil,
+  Plus,
   Redo2,
   Scan,
   Square,
@@ -55,6 +57,9 @@ import { mode, supabase } from "../services";
 import { files } from "../fileService";
 import { FilePreview } from "./WorkspaceFiles";
 import FocusCanvas from "./FocusCanvas";
+import HierarchyCardView from "./HierarchyCard";
+import ToolPopover from "./ToolPopover";
+import type { Hierarchy, HierarchyCard } from "../../shared/workflow";
 type BoardNode = Node<
   {
     row: BoardObject;
@@ -68,11 +73,13 @@ type BoardNode = Node<
       y: number,
     ) => void;
     file?: NonNullable<WorkspaceSnapshot["files"]>[number];
+    system?: HierarchyCard;
   }
 >;
 const ObjectNode = memo(
   function ObjectNode({ data, selected }: NodeProps<BoardNode>) {
     const { row, file } = data, d = row.data;
+    if (data.system) return <HierarchyCardView card={data.system} />;
     const path = d.points.map((p, i) => `${i ? "L" : "M"}${p[0]},${p[1]}`).join(
       " ",
     );
@@ -87,7 +94,7 @@ const ObjectNode = memo(
         onDoubleClick={() => data.onEdit(row.id)}
       >
         <NodeResizer
-          isVisible={selected && d.kind !== "stroke"}
+          isVisible={selected && !d.locked && d.kind !== "stroke"}
           minWidth={40}
           minHeight={40}
           maxWidth={3000}
@@ -137,7 +144,7 @@ const ObjectNode = memo(
             <>
               {d.kind === "file" && file && (
                 <div className="board-file-preview nodrag">
-                  <FilePreview file={file} />
+                  <FilePreview file={file} version={d.fileVersion ?? undefined} />
                 </div>
               )}
               {d.kind === "file" && !file && <span>File unavailable</span>}
@@ -161,7 +168,7 @@ const ObjectNode = memo(
   },
   (a, b) =>
     a.selected === b.selected && a.data.row.version === b.data.row.version &&
-    a.data.row.id === b.data.row.id && a.data.file === b.data.file,
+    a.data.row.id === b.data.row.id && a.data.file === b.data.file && a.data.system === b.data.system,
 );
 const nodeTypes = { board: ObjectNode };
 type Comment = {
@@ -180,17 +187,22 @@ type Pending = {
   deleted: boolean;
 };
 
-function Board(
-  { snapshot: s, projectId, openProject, notify }: {
+export function Board(
+  { snapshot: s, projectId, openProject, notify, hierarchy, onAddTask, onDuplicateTask }: {
     snapshot: WorkspaceSnapshot;
     projectId: string;
     openProject: () => void;
     notify: (text: string) => void;
+    hierarchy?: Hierarchy;
+    onAddTask?: () => void;
+    onDuplicateTask?: (project: WorkspaceSnapshot["projects"][number]) => void;
   },
 ) {
   const flow = useReactFlow<BoardNode>(),
     viewport = useViewport(),
     cache = useQueryClient();
+  const nodesInitialized = useNodesInitialized(), fitted = useRef<string | null>(null);
+  const boardPadding = { top: hierarchy ? "20px" : "100px", right: "20px", bottom: window.innerWidth < 600 ? "115px" : "55px", left: window.innerWidth < 600 ? "20px" : "65px" } as const;
   const project = s.projects.find((p) => p.id === projectId)!,
     agreement = activeAgreement(project);
   const scope = `crewcanvas.board-draft.${s.actorId}.${projectId}`;
@@ -202,6 +214,22 @@ function Board(
   const [ready, setReady] = useState(false),
     [status, setStatus] = useState("Connecting…"),
     [error, setError] = useState("");
+  useEffect(() => {
+    const key = hierarchy?.layoutKey ?? projectId;
+    if (ready && (hierarchy || nodesInitialized) && fitted.current !== key) {
+      // New graph modes must reach React Flow's internal node store before
+      // fitting. Offscreen fixed-size cards do not need DOM measurement first.
+      let second = 0;
+      const first = requestAnimationFrame(() => {
+        second = requestAnimationFrame(() => {
+          if (fitted.current === key) return;
+          fitted.current = key;
+          void flow.fitView({ padding: boardPadding, maxZoom: 1, ...(hierarchy ? { nodes: hierarchy.cards.map(c => ({ id: c.id })) } : {}) });
+        });
+      });
+      return () => { cancelAnimationFrame(first); cancelAnimationFrame(second); };
+    }
+  }, [ready, nodesInitialized, flow, hierarchy?.layoutKey, projectId]);
   const [selected, setSelected] = useState<string[]>([]),
     [tool, setTool] = useState<"select" | "hand" | "pen" | "eraser">("select");
   const [editor, setEditor] = useState<
@@ -231,6 +259,10 @@ function Board(
 
   const [lineColor, setLineColor] = useState<BoardData["color"]>("ink"),
     [thickness, setThickness] = useState(3);
+  const clipboard = useRef<BoardData[]>([]);
+  const [menu, setMenu] = useState<{x: number; y: number} | null>(null);
+  const [contextTask, setContextTask] = useState<HierarchyCard | null>(null);
+  const taskClipboard = useRef<WorkspaceSnapshot["projects"][number] | null>(null);
   const commitPending = useCallback((next: Pending[]) => {
     pendingRef.current = next;
     setPending(next);
@@ -307,11 +339,13 @@ function Board(
       }
     };
     window.addEventListener("online", refresh);
+    window.addEventListener("crewcanvas:board-changed", refresh);
     window.addEventListener("beforeunload", unload);
     return () => {
       alive = false;
       clearInterval(timer);
       window.removeEventListener("online", refresh);
+      window.removeEventListener("crewcanvas:board-changed", refresh);
       window.removeEventListener("beforeunload", unload);
       if (channel) void supabase!.removeChannel(channel);
     };
@@ -369,7 +403,7 @@ function Board(
   }
   const edit = (id: string) => {
     const row = latest.current.find((row) => row.id === id);
-    if (row) {
+    if (row && !row.data.locked) {
       setEditor({ id, data: structuredClone(row.data), expected: row.version });
       setComment("");
       setReplyTo(null);
@@ -405,6 +439,7 @@ function Board(
           measured: measurements.get(row.id),
           style: { width: row.data.width, height: row.data.height },
           zIndex: row.data.z,
+          draggable: !row.data.locked,
           selected: selected.includes(row.id),
           data: {
             row,
@@ -419,6 +454,14 @@ function Board(
       ),
     [rows, selected, s.files, measurements],
   );
+  const hierarchyNodes: BoardNode[] = (hierarchy?.cards ?? []).map(card => ({
+    id: card.id, type: "board", position: { x: card.x, y: card.y },
+    width: 260, height: 140, style: { width: 260, height: 140 }, draggable: false, connectable: false,
+    selected: selected.includes(card.id),
+    data: { row: { id: card.id, project_id: projectId, author_id: "", updated_by: "", version: 1, deleted: false,
+      data: newBoardData("frame"), updated_at: "" }, system: card, onEdit: card.onOpen, onResize: () => {}, onGeometryStart: () => {} },
+  }));
+  const displayNodes = [...hierarchyNodes, ...nodes];
   const [moving, setMoving] = useState<BoardNode[] | null>(null);
   const geometryBases = useRef(new Map<string, BoardObject>());
   const edges = rows.filter((row) =>
@@ -435,8 +478,9 @@ function Board(
     style: { stroke: "var(--secondary)", strokeWidth: 1.5 },
   }));
   async function add(kind: BoardData["kind"], value?: BoardData) {
+    fitted.current = hierarchy?.layoutKey ?? projectId;
     const box = root.current!.getBoundingClientRect(),
-      center = flow.screenToFlowPosition({
+      center = hierarchy ? { x: 1420, y: Math.max(80, ...rows.filter(r => !r.deleted && r.data.x >= 1400).map(r => r.data.y + r.data.height + 40)) } : flow.screenToFlowPosition({
         x: box.left + box.width * .45,
         y: box.top + box.height * .4,
       });
@@ -450,12 +494,14 @@ function Board(
     const row = await save(id, data, 0);
     if (row) {
       setSelected([id]);
+      if (hierarchy && kind !== "connector") void flow.setCenter(data.x + data.width / 2, data.y + data.height / 2, { zoom: .9, duration: 200 });
       if (!["stroke", "connector", "file"].includes(kind)) edit(id);
     }
     if (kind !== "stroke") setTool("select");
   }
   async function connect(c: Connection) {
     if (!c.source || !c.target || c.source === c.target) return;
+    if (![c.source, c.target].every(id => latest.current.some(r => r.id === id && !r.deleted))) return;
     if (
       edges.some((edge) => edge.source === c.source && edge.target === c.target)
     ) return;
@@ -468,12 +514,14 @@ function Board(
   async function removeSelected() {
     for (const id of selected) {
       const row = latest.current.find((r) => r.id === id);
-      if (row && !row.deleted) await save(id, row.data, row.version, true);
+      if (row && !row.deleted && !row.data.locked) await save(id, row.data, row.version, true);
     }
     setSelected([]);
     setEditor(null);
   }
   async function duplicate() {
+    const task = hierarchy?.cards.find(c => selected.includes(c.id) && c.task)?.task;
+    if (task && onDuplicateTask) { onDuplicateTask(task); return; }
     const source = latest.current.filter((row) =>
       selected.includes(row.id) && !row.deleted && row.data.kind !== "connector"
     ).map((row) => row.data);
@@ -482,8 +530,36 @@ function Board(
         ...structuredClone(data),
         x: data.x + 35,
         y: data.y + 35,
+        locked: false,
+        groupId: null,
       });
     }
+  }
+  function copySelection() {
+    taskClipboard.current = null;
+    clipboard.current = latest.current.filter(r => selected.includes(r.id) && !r.deleted && r.data.kind !== "connector").map(r => structuredClone(r.data));
+    setMenu(null);
+  }
+  async function pasteSelection() {
+    if (taskClipboard.current && onDuplicateTask) { onDuplicateTask(taskClipboard.current); setMenu(null); return; }
+    for (const data of clipboard.current) await add(data.kind, { ...data, x: data.x + 45, y: data.y + 45, locked: false, groupId: null });
+    setMenu(null);
+  }
+  async function arrange(action: "lock" | "unlock" | "group" | "ungroup" | "left" | "top" | "front" | "back") {
+    const chosen = latest.current.filter(r => selected.includes(r.id) && !r.deleted && r.data.kind !== "connector");
+    const groupId = crypto.randomUUID();
+    for (const row of chosen) {
+      if (row.data.locked && action !== "unlock") continue;
+      const next = { ...row.data };
+      if (action === "lock" || action === "unlock") next.locked = action === "lock";
+      if (action === "group" || action === "ungroup") next.groupId = action === "group" ? groupId : null;
+      if (action === "left") next.x = Math.min(...chosen.map(r => r.data.x));
+      if (action === "top") next.y = Math.min(...chosen.map(r => r.data.y));
+      if (action === "front") next.z = Math.min(1000, Math.max(...latest.current.map(r => r.data.z)) + 1);
+      if (action === "back") next.z = Math.max(-1000, Math.min(...latest.current.map(r => r.data.z)) - 1);
+      await save(row.id, next, row.version);
+    }
+    setMenu(null);
   }
   async function history(back: boolean) {
     const stack = back ? undo : redo, entry = stack.at(-1);
@@ -626,9 +702,12 @@ function Board(
       onCopy={(e) => {
         if (
           (e.target as HTMLElement).closest(
-            "input,textarea,[contenteditable=true]",
+            "input,textarea,select,[contenteditable=true]",
           )
         ) return;
+        const task = hierarchy?.cards.find(c => selected.includes(c.id) && c.task)?.task;
+        if (task) { e.preventDefault(); taskClipboard.current = task; e.clipboardData.setData("application/x-crewcanvas-task", task.id); e.clipboardData.setData("text/plain", task.title); return; }
+        taskClipboard.current = null;
         const objects = latest.current.filter((row) =>
           selected.includes(row.id) && !row.deleted &&
           row.data.kind !== "connector"
@@ -648,9 +727,10 @@ function Board(
       onPaste={(e) => {
         if (
           (e.target as HTMLElement).closest(
-            "input,textarea,[contenteditable=true]",
+            "input,textarea,select,[contenteditable=true]",
           )
         ) return;
+        if (taskClipboard.current && e.clipboardData.getData("application/x-crewcanvas-task") === taskClipboard.current.id && onDuplicateTask) { e.preventDefault(); onDuplicateTask(taskClipboard.current); return; }
         const raw = e.clipboardData.getData("application/x-crewcanvas-objects");
         if (raw) {
           e.preventDefault();
@@ -666,6 +746,8 @@ function Board(
                   ...data,
                   x: data.x + 35,
                   y: data.y + 35,
+                  locked: false,
+                  groupId: null,
                 });
               }
             }
@@ -702,6 +784,11 @@ function Board(
             "input,textarea,select,[contenteditable=true]",
           )
         ) return;
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+          e.preventDefault();
+          setSelected(latest.current.filter(r => !r.deleted && r.data.kind !== "connector").map(r => r.id));
+          return;
+        }
         if (
           (e.ctrlKey || e.metaKey) &&
           ["z", "y", "d"].includes(e.key.toLowerCase())
@@ -735,8 +822,8 @@ function Board(
         </button>
       </div>
       <ReactFlow<BoardNode>
-        nodes={moving ?? nodes}
-        edges={edges}
+        nodes={moving ?? displayNodes}
+        edges={[...(hierarchy?.edges ?? []).map(e => ({ ...e, type: "smoothstep", style: { stroke: "var(--line-strong)" } })), ...edges]}
         nodeTypes={nodeTypes}
         onNodesChange={(changes) => {
           // React Flow's measured dimensions are presentation state. Preserve
@@ -763,7 +850,7 @@ function Board(
               change.type === "position" ||
               change.type === "dimensions" && change.resizing
             )
-          ) setMoving((old) => applyNodeChanges(changes, old ?? nodes));
+          ) setMoving((old) => applyNodeChanges(changes, old ?? displayNodes));
           for (const change of changes) {
             if (change.type === "select") {
               setSelected((old) =>
@@ -793,8 +880,11 @@ function Board(
           setMoving(null);
         }}
         onNodeClick={(event, node) => {
+          if (node.data.system) return;
+          const group = node.data.row.data.groupId;
+          if (group && !event.shiftKey) setSelected(latest.current.filter(r => r.data.groupId === group && !r.deleted).map(r => r.id));
           if (
-            tool === "select" && !event.shiftKey && !event.metaKey &&
+            event.detail === 2 && tool === "select" && !event.shiftKey && !event.metaKey &&
             !event.ctrlKey
           ) edit(node.id);
           if (tool === "eraser") {
@@ -809,14 +899,18 @@ function Board(
             }
           }
         }}
-        onNodeDoubleClick={(_, node) => edit(node.id)}
+        onNodeDoubleClick={(_, node) => node.data.system ? node.data.system.onOpen() : edit(node.id)}
+        onNodeContextMenu={(e, node) => { if (node.data.system && !node.data.system.task) return; e.preventDefault(); setContextTask(node.data.system ?? null); setSelected([node.id]); setMenu({ x: e.clientX, y: e.clientY }); }}
+        onPaneContextMenu={e => { e.preventDefault(); setContextTask(null); setMenu({ x: e.clientX, y: e.clientY }); }}
         onEdgeClick={(_, edge) => setSelected([edge.id])}
         onEdgeDoubleClick={(_, edge) => edit(edge.id)}
         onPaneClick={() => {
           setEditor(null);
           setSelected([]);
+          setMenu(null);
         }}
         onConnect={(c) => void connect(c)}
+        onMoveStart={event => { if (event) fitted.current = hierarchy?.layoutKey ?? projectId; }}
         panOnDrag={tool === "hand" ? true : [1, 2]}
         selectionOnDrag={tool === "select"}
         nodesDraggable={tool === "select"}
@@ -827,7 +921,7 @@ function Board(
         maxZoom={3}
         onlyRenderVisibleElements
         fitView
-        fitViewOptions={{ padding: .3, maxZoom: 1 }}
+        fitViewOptions={{ padding: boardPadding, maxZoom: 1 }}
         proOptions={{ hideAttribution: true }}
       >
         <Background color="var(--board-dot)" gap={24} />
@@ -902,92 +996,17 @@ function Board(
         </svg>
       )}
       <div className="board-toolbar" aria-label="Whiteboard tools">
-        {([
-          { tool: "select", label: "Select", icon: MousePointer2 },
-          { tool: "hand", label: "Pan", icon: Hand },
-          { tool: "pen", label: "Draw", icon: Pencil },
-          { tool: "eraser", label: "Erase strokes", icon: Trash2 },
-        ] as const).map(({ tool: t, label, icon: Icon }) => (
-          <button
-            key={t}
-            title={label}
-            aria-label={label}
-            aria-pressed={tool === t}
-            onClick={() => {
-              setTool(t);
-              setEditor(null);
-            }}
-          >
-            <Icon size={18} />
-          </button>
-        ))}
+        {([{ tool: "select", label: "Select", icon: MousePointer2 }, { tool: "hand", label: "Pan", icon: Hand }] as const).map(({tool: t, label, icon: Icon}) => <button key={t} title={label} aria-label={label} aria-pressed={tool === t} onClick={() => { setTool(t); setEditor(null); }}><Icon size={18} /></button>)}
         <span className="tool-divider" />
-        <button
-          title="Sticky note"
-          aria-label="Add sticky note"
-          disabled={!ready}
-          onClick={() => void add("note")}
-        >
-          <StickyNote size={18} />
-        </button>
-        <button
-          title="Text"
-          aria-label="Add text"
-          disabled={!ready}
-          onClick={() => void add("text")}
-        >
-          <Type size={18} />
-        </button>
-        <button
-          title="Rectangle"
-          aria-label="Add rectangle"
-          disabled={!ready}
-          onClick={() => void add("rectangle")}
-        >
-          <Square size={18} />
-        </button>
-        <button
-          title="Circle"
-          aria-label="Add circle"
-          disabled={!ready}
-          onClick={() => void add("circle")}
-        >
-          <Circle size={18} />
-        </button>
-        <button
-          title="Frame"
-          aria-label="Add frame"
-          disabled={!ready}
-          onClick={() => void add("frame")}
-        >
-          <Layers size={18} />
-        </button>
-        <button
-          title="Reference link"
-          aria-label="Add link"
-          disabled={!ready}
-          onClick={() => void add("link")}
-        >
-          <Link2 size={18} />
-        </button>
-        <button
-          title="Upload project file"
-          aria-label="Upload project file"
-          disabled={!ready}
-          onClick={() => input.current?.click()}
-        >
-          <FileUp size={18} />
-        </button>
-        <input
-          ref={input}
-          type="file"
-          multiple
-          hidden
-          onChange={(e) => {
-            void upload(Array.from(e.target.files ?? []));
-            e.target.value = "";
-          }}
-        />
+        {onAddTask && <button title="Add task" aria-label="Add task" onClick={onAddTask}><Plus size={18} /></button>}
+        <button title="Sticky note" aria-label="Add sticky note" disabled={!ready} onClick={() => void add("note")}><StickyNote size={18} /></button>
+        <button title="Text" aria-label="Add text" disabled={!ready} onClick={() => void add("text")}><Type size={18} /></button>
+        <ToolPopover label="Shapes" icon={<Square size={18} />}>{(["rectangle", "circle", "diamond", "frame"] as const).map(kind => <button key={kind} aria-label={`Add ${kind}`} disabled={!ready} onClick={() => void add(kind)}>{kind}</button>)}</ToolPopover>
+        <ToolPopover label="Lines and connectors" icon={<ArrowRight size={18} />}><button aria-label="Add line" disabled={!ready} onClick={() => void add("line")}>Line</button><button aria-label="Add arrow" disabled={!ready} onClick={() => void add("arrow")}>Arrow</button><small>Drag between two annotation handles to save a connector.</small></ToolPopover>
+        <button title="Draw" aria-label="Draw" aria-pressed={tool === "pen"} onClick={() => { setTool("pen"); setEditor(null); }}><Pencil size={18} /></button>
+        <button title="Erase strokes" aria-label="Erase strokes" aria-pressed={tool === "eraser"} onClick={() => { setTool("eraser"); setEditor(null); }}><Trash2 size={18} /></button>
+        <ToolPopover label="Files and links" icon={<FileUp size={18} />}><button aria-label="Upload project file" disabled={!ready} onClick={() => input.current?.click()}>Upload file</button><button aria-label="Add link" disabled={!ready} onClick={() => void add("link")}><Link2 size={14} /> Add link</button></ToolPopover>
+        <input ref={input} type="file" multiple hidden onChange={e => { void upload(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
       </div>
       {tool === "pen" && (
         <div className="pen-options">
@@ -1011,7 +1030,7 @@ function Board(
           </label>
         </div>
       )}
-      {!rows.some((row) => !row.deleted) && ready && (
+      {!hierarchy && !rows.some((row) => !row.deleted) && ready && (
         <div className="board-empty">
           <StickyNote size={26} />
           <h3>Room to work through ideas.</h3>
@@ -1025,6 +1044,7 @@ function Board(
         </div>
       )}
       <div className="board-bottom">
+        {hierarchy && <button disabled={!ready} onClick={() => { fitted.current = hierarchy.layoutKey ?? projectId; setMoving(null); void flow.fitView({ padding: boardPadding, maxZoom: 1, nodes: hierarchy.cards.map(c => ({id: c.id})) }); }}>Reset layout</button>}
         <span role="status">
           {pending.length ? `${pending.length} unsaved draft(s)` : status}
         </span>
@@ -1051,8 +1071,9 @@ function Board(
             <ZoomIn size={17} />
           </button>
           <button
-            aria-label="Fit board"
-            onClick={() => void flow.fitView({ padding: .3, maxZoom: 1 })}
+            aria-label={hierarchy ? "Fit to content" : "Fit board"}
+            disabled={!ready}
+            onClick={() => { fitted.current = hierarchy?.layoutKey ?? projectId; requestAnimationFrame(() => void flow.fitView({ padding: boardPadding, maxZoom: 1 })); }}
           >
             <Scan size={17} />
           </button>
@@ -1387,6 +1408,26 @@ function Board(
           </section>
         </aside>
       )}
+      {selected.some(id => latest.current.some(r => r.id === id && !r.deleted)) && !editor && <div className="object-actions" aria-label="Selected object actions">
+        <button onClick={() => edit(selected[0])}>Edit</button><button onClick={() => void duplicate()}>Duplicate</button>
+        <button onClick={() => void arrange("front")}>Bring forward</button><button onClick={() => void arrange("lock")}>Lock</button>
+        <button onClick={() => void arrange("unlock")}>Unlock</button>
+        {selected.length > 1 && <><button onClick={() => void arrange("group")}>Group</button><button onClick={() => void arrange("ungroup")}>Ungroup</button><button onClick={() => void arrange("left")}>Align left</button><button onClick={() => void arrange("top")}>Align top</button></>}
+        <button onClick={() => void removeSelected()}>Delete</button>
+      </div>}
+      {menu && <div className="board-context-menu" role="menu" style={{ left: Math.min(menu.x, window.innerWidth - 170), top: Math.min(menu.y, window.innerHeight - 330) }}>
+        {contextTask ? <><button role="menuitem" onClick={() => { contextTask.onOpen(); setMenu(null); }}>Edit task details</button>
+          {onDuplicateTask && <button role="menuitem" onClick={() => { onDuplicateTask(contextTask.task!); setMenu(null); }}>Duplicate as draft</button>}
+          <button role="menuitem" onClick={() => { taskClipboard.current = contextTask.task!; setMenu(null); }}>Copy task</button>
+          <small>Approvals and payments stay on the original task.</small></> : <>
+        <button role="menuitem" onClick={() => { edit(selected[0]); setMenu(null); }}>Edit</button>
+        <button role="menuitem" onClick={() => { void duplicate(); setMenu(null); }}>Duplicate</button>
+        <button role="menuitem" onClick={copySelection}>Copy</button><button role="menuitem" disabled={!clipboard.current.length && !taskClipboard.current} onClick={() => void pasteSelection()}>Paste</button>
+        <button role="menuitem" onClick={() => void arrange("back")}>Send backward</button>
+        <button role="menuitem" onClick={() => void arrange("lock")}>Lock</button><button role="menuitem" onClick={() => void arrange("unlock")}>Unlock</button>
+        <button role="menuitem" onClick={() => { void removeSelected(); setMenu(null); }}>Delete</button>
+        </>}
+      </div>}
     </div>
   );
 }

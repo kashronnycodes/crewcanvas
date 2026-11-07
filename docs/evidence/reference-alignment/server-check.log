@@ -1,0 +1,7 @@
+
+> crewcanvas@1.0.0 check:server
+> deno check --config supabase/functions/deno.json supabase/functions/crew-api/index.ts supabase/functions/paypal-webhook/index.ts supabase/functions/reconcile/index.ts
+
+Check supabase/functions/crew-api/index.ts
+Check supabase/functions/paypal-webhook/index.ts
+Check supabase/functions/reconcile/index.ts

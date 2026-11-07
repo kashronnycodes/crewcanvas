@@ -11,14 +11,14 @@ import App from "../src/App";
 import { mutateDemo, repository, resetDemo } from "../src/services";
 import { projectFinance } from "../shared/workspace";
 import type { WorkspaceSnapshot } from "../shared/types";
-vi.mock("../src/components/Canvas", () => ({
+vi.mock("../src/components/WorkflowCanvas", () => ({
   default: (
-    { snapshot, onSelect }: { snapshot: WorkspaceSnapshot; onSelect: Function },
+    { snapshot, onOpen }: { snapshot: WorkspaceSnapshot; onOpen: Function },
   ) => (
     <button
       onClick={() => {
         const p = snapshot.projects[0];
-        onSelect(p.workerId, "all", p.id, "deliverables");
+        onOpen(p.workerId, "all", p.id, "deliverables");
       }}
     >
       Open submitted work card

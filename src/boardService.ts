@@ -50,7 +50,7 @@ export const boardService = {
     // A removed underlying file must not prevent removing its visual card.
     // Undo still validates the original file reference before restoring it.
     const data = boardDataSchema.parse(
-      deleted ? { ...value, fileId: null } : value,
+      deleted ? { ...value, fileId: null, fileVersion: null } : value,
     );
     if (mode === "demo") {
       await assertDemoAccess(projectId);
