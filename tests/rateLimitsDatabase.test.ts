@@ -18,7 +18,7 @@ beforeAll(async () => {
   await db.query("insert into public.memberships values($1,$2,$3,'worker'),($4,$2,$5,'worker')", [actor, user, uid(), secondActor, uid()]);
   // Current actor quota already used before rolling migration must not reset.
   await db.query("insert into private.ai_limits values($1,date_trunc('minute',now()),4),($2,date_trunc('minute',now()),3)", [actor, secondActor]);
-  await db.exec(readFileSync(new URL("../supabase/migrations/20261106215714_api_rate_limits.sql", import.meta.url), "utf8"));
+  await db.exec(readFileSync(new URL("../supabase/migrations/20261107000230_api_rate_limits.sql", import.meta.url), "utf8"));
 }, 30000);
 afterAll(async () => { await db?.close(); });
 describe.sequential("distributed limiter SQL and privileges", () => {

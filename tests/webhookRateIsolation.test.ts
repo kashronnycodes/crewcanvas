@@ -8,7 +8,7 @@ const workspace = uid(), worker = uid(), seller = uid(), identity = uid();
 beforeAll(async () => {
   db = new PGlite();
   await db.exec("create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$select null::uuid$$;");
-  for (const migration of ["20261028110143_initial_schema.sql", "20261106215714_api_rate_limits.sql"]) {
+  for (const migration of ["20261028110143_initial_schema.sql", "20261107000230_api_rate_limits.sql"]) {
     await db.exec(readFileSync(new URL(`../supabase/migrations/${migration}`, import.meta.url), "utf8"));
   }
   await db.query("insert into auth.users values($1)", [identity]);

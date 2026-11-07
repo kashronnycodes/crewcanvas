@@ -41,7 +41,7 @@ try {
     create table public.projects(id uuid primary key,workspace_id uuid,worker_id uuid);
     create table private.ai_limits(actor_id uuid,minute timestamptz,requests integer);
     insert into auth.users values('${identity}'),('${other}');`);
-  await sql("begin;\n" + readFileSync(new URL("../supabase/migrations/20261106215714_api_rate_limits.sql", import.meta.url), "utf8") + "\ncommit;");
+  await sql("begin;\n" + readFileSync(new URL("../supabase/migrations/20261107000230_api_rate_limits.sql", import.meta.url), "utf8") + "\ncommit;");
   const take = (id = identity) => sql(`set role service_role; select public.api_rate_limit('${id}',array['api','payment_issue'],'{"api":120,"payment_issue":5}')->>'allowed';`)
     .then(out => out.split(/\r?\n/).at(-1) === "true");
   // Hold the target minute open comfortably; no sleep across a window boundary.

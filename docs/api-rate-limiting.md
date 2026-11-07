@@ -38,7 +38,7 @@ The table has RLS enabled and no browser policy. Counter and cleanup RPC executi
 
 ## AI migration and compatibility
 
-Migration `20261106215714_api_rate_limits.sql` locks the legacy AI counter while importing current-minute usage, aggregated by memberships' Auth user IDs. It replaces only the `ai_allow` branch of the existing provider-store function; provider invoice/webhook/audit bookkeeping is retained. The old per-actor counter table is removed after the function is replaced. Old Edge releases continue receiving the original boolean result. New releases request detailed admission/retry information. Thus mixed old/new instances share the same Auth-user counter without double charging AI requests. Current-minute usage is preserved conservatively if the aggregate already exceeds ten.
+Migration `20261107000230_api_rate_limits.sql` locks the legacy AI counter while importing current-minute usage, aggregated by memberships' Auth user IDs. It replaces only the `ai_allow` branch of the existing provider-store function; provider invoice/webhook/audit bookkeeping is retained. The old per-actor counter table is removed after the function is replaced. Old Edge releases continue receiving the original boolean result. New releases request detailed admission/retry information. Thus mixed old/new instances share the same Auth-user counter without double charging AI requests. Current-minute usage is preserved conservatively if the aggregate already exceeds ten.
 
 Both brief and revision generation use the shared leaf limiter; workspace commands use the same `ai_allow` once. Authorization still precedes every provider call. Structured output validation, cited scope checks and `ai_run` audit records are unchanged. Provider HTTP 429 responses expose sanitized messages and a validated numeric Retry-After, with a 60-second fallback. No raw provider payload, stack trace or credential is returned.
 
@@ -95,7 +95,7 @@ Ordinary requests add one counter RPC, with any endpoint-specific user quota bun
 
 | Area | Files |
 | --- | --- |
-| Database | `supabase/migrations/20261106215714_api_rate_limits.sql` |
+| Database | `supabase/migrations/20261107000230_api_rate_limits.sql` |
 | Admission and responses | `shared/rate-limits.ts`, `supabase/functions/_shared/rate-limit.ts`, `supabase/functions/_shared/backend.ts`, `supabase/functions/crew-api/index.ts` |
 | AI compatibility and provider errors | `supabase/functions/_shared/ai.ts`, `supabase/functions/_shared/workspace-ai.ts`, `shared/ai-errors.ts`, `shared/gemini.ts` |
 | Frontend retry handling | `shared/http-errors.ts`, `src/services.ts`, `src/fileService.ts`, `src/main.tsx` |
