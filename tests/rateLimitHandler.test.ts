@@ -62,6 +62,16 @@ describe("actual Edge handler admission and provider ordering", () => {
     expect((await handler(request("payments/issue", {}, { authenticated: false }))).status).toBe(401);
     expect(m.rpc).not.toHaveBeenCalled();
   });
+  it("permits one exact release-preview origin while retaining existing origin settings", async () => {
+    m.env.ALLOWED_RELEASE_ORIGIN = "https://crewcanvas-release.example";
+    for (const origin of ["https://crewcanvas.test", "https://crewcanvas-release.example", "https://untrusted.example"]) {
+      const req = request("snapshot", undefined, { method: "OPTIONS" });
+      req.headers.set("Origin", origin);
+      const response = await handler(req);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(origin === "https://untrusted.example" ? null : origin);
+    }
+    expect(m.rpc).not.toHaveBeenCalled();
+  });
   it.each(["payments/issue", "payments/reconcile", "payments/verify-configuration", "files/upload", "ai/brief", "ai/workspace"])("rejects %s before any provider, upload or AI call", async path => {
     m.rpc.mockResolvedValue({ data: { allowed: false, retryAfter: 23 }, error: null });
     const result = await handler(request(path, { projectId: "50000000-0000-4000-8000-000000000001" }));

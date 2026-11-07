@@ -69,6 +69,7 @@ export function headers(req: Request) {
 export function allowedOrigins(): string[] {
   return [
     Deno.env.get("ALLOWED_ORIGIN"),
+    Deno.env.get("ALLOWED_RELEASE_ORIGIN"),
     ...(Deno.env.get("ALLOWED_ORIGINS") ?? "").split(","),
   ]
     .filter((value): value is string => !!value?.trim()).map((value) =>
