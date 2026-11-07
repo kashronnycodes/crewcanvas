@@ -40,6 +40,7 @@ import {
   X,
 } from "lucide-react";
 import type { CanvasLayout, Person, WorkspaceSnapshot } from "../shared/types";
+import type { ProjectTab } from "../shared/freelance-canvas";
 import { indicators, todayIn, uid } from "../shared/domain";
 import type { Command } from "../shared/validation";
 import { IDS } from "../shared/seed";
@@ -104,6 +105,7 @@ function WorkspaceApp(
     string | undefined
   >();
   const [filter, setFilter] = useState<Filter>("all");
+  const [selectedTab, setSelectedTab] = useState<ProjectTab>("overview");
   const [newProject, setNewProject] = useState(false);
   const [invite, setInvite] = useState(false);
   const [help, setHelp] = useState(false);
@@ -128,11 +130,17 @@ function WorkspaceApp(
   }, [toast]);
   const notify = useCallback((message: string) => setToast(message), []);
   const onSelect = useCallback(
-    (id: string, nextFilter: Filter = "all", projectId?: string) => {
+    (
+      id: string,
+      nextFilter: Filter = "all",
+      projectId?: string,
+      tab: ProjectTab = "overview",
+    ) => {
       document.dispatchEvent(new Event("crewcanvas:exit-focus"));
       setSelected(id);
       setFilter(nextFilter);
       setSelectedProjectId(projectId);
+      setSelectedTab(tab);
     },
     [],
   );
@@ -617,6 +625,8 @@ function WorkspaceApp(
                     onNotify={notify}
                     onInvite={() => setInvite(true)}
                     selectedPersonId={selected ?? undefined}
+                    onCommand={command}
+                    busy={busy}
                   />
                 </FocusCanvas>
               )
@@ -641,11 +651,12 @@ function WorkspaceApp(
       </div>
       {selectedPerson && (
         <ProjectDrawer
-          key={`${selectedPerson.id}-${filter}`}
+          key={`${selectedPerson.id}-${filter}-${selectedProjectId}-${selectedTab}`}
           person={selectedPerson}
           snapshot={snapshot}
           initialFilter={filter}
           initialProjectId={selectedProjectId}
+          initialTab={selectedTab}
           onClose={() => setSelected(null)}
           onCommand={command}
           onIssue={(id) =>

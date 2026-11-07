@@ -81,7 +81,7 @@ test("completes agreement, delivery review, and persists the accepted result", a
   await page.getByRole("button", { name: "Projects", exact: true }).click();
   await page.getByRole("button", { name: projectName, exact: true }).click();
   await page.getByRole("tab", { name: "Deliverables" }).click();
-  await page.getByRole("button", { name: "Accept delivery" }).click();
+  await page.getByRole("button", { name: "Approve Work" }).click();
   await expect(page.getByText("Work accepted", { exact: true })).toBeVisible();
 
   await page.reload();

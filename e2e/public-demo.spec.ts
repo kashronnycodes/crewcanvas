@@ -60,8 +60,8 @@ test("seeded revision fee can be accepted and the file opens", async ({ page }) 
   await page.getByRole("button", { name: "Thumbnails", exact: true }).click();
   await page.getByRole("tab", { name: "Revisions" }).click();
   await expect(page.getByText("Five thumbnails in an additional visual direction", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Accept proposal" }).click();
-  await expect(page.getByRole("button", { name: "Accept proposal" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Approve revision fee" }).click();
+  await expect(page.getByRole("button", { name: "Approve revision fee" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Deliverables" }).click();
   const popup = page.waitForEvent("popup");
   await page.getByRole("button", { name: "campaign-deliverable.txt · v1" }).click();
