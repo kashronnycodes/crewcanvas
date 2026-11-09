@@ -98,6 +98,8 @@ export interface Revision {
   })[];
 }
 export interface Proposal {
+  previousProposalId?: string;
+  note?: string;
   id: string;
   revisionId: string;
   itemId: string;
@@ -135,6 +137,8 @@ export interface Activity {
   createdAt: string;
 }
 export interface Project {
+  /** Optional grouping only; every assignment retains its own authorization and ledger. */
+  parentProjectId?: string;
   id: string;
   workspaceId: string;
   workerId: string;

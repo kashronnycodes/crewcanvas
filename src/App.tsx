@@ -3,14 +3,7 @@ import AccountGate from "./components/AccountGate";
 import DemoGate from "./components/DemoGate";
 import { publicDemo } from "./demoSession";
 import { DEMO_ACCOUNTS } from "../shared/publicDemo";
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -24,11 +17,9 @@ import {
   CircleHelp,
   Clapperboard,
   LayoutGrid,
-  List,
   LoaderCircle,
   LogOut,
   Moon,
-  PenTool,
   Plus,
   RotateCcw,
   Search,
@@ -46,8 +37,8 @@ import type { Command } from "../shared/validation";
 import { IDS } from "../shared/seed";
 import {
   api,
-  inviteMember,
   getDemoActor,
+  inviteMember,
   mode,
   payments,
   repository,
@@ -58,17 +49,19 @@ import {
 } from "./services";
 import Avatar from "./components/Avatar";
 import Modal from "./components/Modal";
-import ProjectDrawer from "./components/ProjectDrawer";
 import ProjectForm from "./components/ProjectForm";
 import { LayoutSaveQueue } from "./layoutQueue";
 import { useTheme } from "./theme";
-import FocusCanvas from "./components/FocusCanvas";
-import ProjectIndex from "./components/ProjectIndex";
-const Canvas = lazy(() => import("./components/Canvas"));
-const ProjectBoard = lazy(() => import("./components/ProjectBoard"));
+
+import StudioWorkspace from "./components/StudioWorkspace";
+
 type Filter = "all" | "attention" | "completed";
 export default function App() {
-  if (publicDemo) return <DemoGate>{(signOut) => <WorkspaceApp demoSignOut={signOut} />}</DemoGate>;
+  if (publicDemo) {
+    return (
+      <DemoGate>{(signOut) => <WorkspaceApp demoSignOut={signOut} />}</DemoGate>
+    );
+  }
   return mode === "integrated"
     ? (
       <AccountGate>
@@ -94,18 +87,12 @@ function WorkspaceApp(
   const client = useQueryClient();
 
   const authReady = true;
-  const [actorId, setActorId] = useState(() => getDemoActor() ?? IDS.myron as string);
-  const [theme, toggleTheme] = useTheme();
-  const [view, setView] = useState<"canvas" | "list" | "board">(() =>
-    window.innerWidth < 768 ? "list" : "canvas"
+  const [actorId, setActorId] = useState(() =>
+    getDemoActor() ?? IDS.myron as string
   );
+  const [theme, toggleTheme] = useTheme();
+  const [view, setView] = useState<"list" | "board" | "revisions">("list");
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<string | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState<
-    string | undefined
-  >();
-  const [filter, setFilter] = useState<Filter>("all");
-  const [selectedTab, setSelectedTab] = useState<ProjectTab>("overview");
   const [newProject, setNewProject] = useState(false);
   const [invite, setInvite] = useState(false);
   const [help, setHelp] = useState(false);
@@ -137,10 +124,11 @@ function WorkspaceApp(
       tab: ProjectTab = "overview",
     ) => {
       document.dispatchEvent(new Event("crewcanvas:exit-focus"));
-      setSelected(id);
-      setFilter(nextFilter);
-      setSelectedProjectId(projectId);
-      setSelectedTab(tab);
+      window.dispatchEvent(
+        new CustomEvent("crewcanvas:open-work", {
+          detail: { id, filter: nextFilter, projectId, tab },
+        }),
+      );
     },
     [],
   );
@@ -255,17 +243,6 @@ function WorkspaceApp(
     snapshot.projects.filter((p) =>
       ["in_progress", "changes_requested"].includes(p.state)
     ).length;
-  const filteredWorkers = workers.filter((p) =>
-    `${p.name} ${p.role} ${
-      snapshot.projects
-        .filter((x) => x.workerId === p.id)
-        .map((x) => x.title)
-        .join(" ")
-    }`
-      .toLowerCase()
-      .includes(search.toLowerCase())
-  );
-  const selectedPerson = snapshot.people.find((p) => p.id === selected);
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -353,19 +330,24 @@ function WorkspaceApp(
                 onChange={(e) => {
                   setDemoActor(e.target.value);
                   setActorId(e.target.value);
-                  setSelected(null);
                   setSearch("");
                 }}
               >
-                {Object.entries(publicDemo ? Object.fromEntries(DEMO_ACCOUNTS.map((a) => [a.id, `${a.name} · ${a.role}`])) : {
-                  [IDS.myron]: "Myron · Employer",
-                  [IDS.ava]: "Jacob · Worker",
-                  [IDS.leo]: "Vincent · Worker",
-                  [IDS.mia]: "Jeshua · Worker",
-                  [IDS.nina]: "Myron Manago · Worker",
-                  [IDS.ethan]: "Ethan · Worker",
-                  [IDS.sofia]: "Eya · Worker",
-                }).map(([id, label]) => (
+                {Object.entries(
+                  publicDemo
+                    ? Object.fromEntries(
+                      DEMO_ACCOUNTS.map((a) => [a.id, `${a.name} · ${a.role}`]),
+                    )
+                    : {
+                      [IDS.myron]: "Myron · Employer",
+                      [IDS.ava]: "Jacob · Worker",
+                      [IDS.leo]: "Vincent · Worker",
+                      [IDS.mia]: "Jeshua · Worker",
+                      [IDS.nina]: "Myron Manago · Worker",
+                      [IDS.ethan]: "Ethan · Worker",
+                      [IDS.sofia]: "Eya · Worker",
+                    },
+                ).map(([id, label]) => (
                   <option key={id} value={id}>
                     {label}
                   </option>
@@ -378,7 +360,11 @@ function WorkspaceApp(
               >
                 <RotateCcw size={13} />
               </button>
-              {demoSignOut && <button onClick={demoSignOut}><LogOut size={13} />Sign out</button>}
+              {demoSignOut && (
+                <button onClick={demoSignOut}>
+                  <LogOut size={13} />Sign out
+                </button>
+              )}
             </div>
           )
           : (
@@ -398,7 +384,7 @@ function WorkspaceApp(
               className="sidebar-active"
               title="People & projects"
               aria-label="People and projects"
-              onClick={() => setView("canvas")}
+              onClick={() => setView("list")}
             >
               <Users size={21} />
             </button>
@@ -444,9 +430,7 @@ function WorkspaceApp(
             </div>
           </div>
         </aside>
-        <main
-          className={`main-workspace ${selectedPerson ? "drawer-visible" : ""}`}
-        >
+        <main className="main-workspace">
           <div className="workspace-toolbar">
             <div className="page-heading">
               <div className="breadcrumb">
@@ -556,33 +540,19 @@ function WorkspaceApp(
           </div>
           <div className="canvas-nav">
             <div className="view-toggle" aria-label="Workspace view">
-              <button
-                aria-pressed={view === "canvas" && employer}
-                className={view === "canvas" && employer ? "selected" : ""}
-                onClick={() => setView("canvas")}
-                disabled={!employer}
-              >
-                <LayoutGrid size={15} />
-                Work map
-              </button>
-              <button
-                aria-pressed={view !== "board" &&
-                  (view === "list" || !employer)}
-                className={view !== "board" && (view === "list" || !employer)
-                  ? "selected"
-                  : ""}
-                onClick={() => setView("list")}
-              >
-                <List size={16} />
-                Projects
-              </button>
-              <button
-                aria-pressed={view === "board"}
-                className={view === "board" ? "selected" : ""}
-                onClick={() => setView("board")}
-              >
-                <PenTool size={15} /> Project whiteboard
-              </button>
+              {([["list", "Project studio"], ["board", "Project whiteboard"], [
+                "revisions",
+                "Revisions",
+              ]] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  aria-pressed={view === id}
+                  className={view === id ? "selected" : ""}
+                  onClick={() => setView(id)}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
             <span className="canvas-nav-label">
               {employer ? "Your team, your way" : "Your assigned projects"}
@@ -605,40 +575,27 @@ function WorkspaceApp(
               </div>
             }
           >
-            {view === "board"
-              ? (
-                <ProjectBoard
-                  snapshot={snapshot}
-                  onOpen={onSelect}
-                  notify={notify}
-                />
-              )
-              : employer && view === "canvas"
-              ? (
-                <FocusCanvas>
-                  <Canvas
-                    snapshot={snapshot}
-                    onSelect={onSelect}
-                    onSave={saveLayout}
-                    saveStatus={saveStatus}
-                    search={search}
-                    onNotify={notify}
-                    onInvite={() => setInvite(true)}
-                    selectedPersonId={selected ?? undefined}
-                    onCommand={command}
-                    busy={busy}
-                  />
-                </FocusCanvas>
-              )
-              : (
-                <div className="people-list">
-                  <ProjectIndex
-                    snapshot={snapshot}
-                    search={search}
-                    onOpen={onSelect}
-                  />
-                </div>
-              )}
+            <StudioWorkspace
+              snapshot={snapshot}
+              view={view}
+              search={search}
+              onCommand={command}
+              onSaveLayout={saveLayout}
+              onIssue={(id) =>
+                run(
+                  () => payments.issue(id, uid()),
+                  mode === "demo"
+                    ? "Simulated invoice created. No transaction occurred."
+                    : "Sandbox invoice created and sent.",
+                )}
+              onRefresh={(id) =>
+                run(
+                  () => payments.reconcile(id),
+                  "Invoice reconciled with PayPal.",
+                )}
+              busy={busy}
+              notify={notify}
+            />
           </Suspense>
           <footer className="workspace-footer">
             <span>
@@ -649,32 +606,6 @@ function WorkspaceApp(
           </footer>
         </main>
       </div>
-      {selectedPerson && (
-        <ProjectDrawer
-          key={`${selectedPerson.id}-${filter}-${selectedProjectId}-${selectedTab}`}
-          person={selectedPerson}
-          snapshot={snapshot}
-          initialFilter={filter}
-          initialProjectId={selectedProjectId}
-          initialTab={selectedTab}
-          onClose={() => setSelected(null)}
-          onCommand={command}
-          onIssue={(id) =>
-            run(
-              () => payments.issue(id, uid()),
-              mode === "demo"
-                ? "Simulated invoice created. No transaction occurred."
-                : "Sandbox invoice created and sent.",
-            )}
-          onRefresh={(id) =>
-            run(
-              () => payments.reconcile(id),
-              "Invoice reconciled with PayPal.",
-            )}
-          busy={busy}
-          onNotify={notify}
-        />
-      )}
       {newProject && (
         <ProjectForm
           people={snapshot.people}
@@ -746,7 +677,6 @@ function WorkspaceApp(
                 resetDemo();
                 saveQueue.current.reset();
                 setActorId(IDS.myron);
-                setSelected(null);
                 setResetOpen(false);
                 setSearch("");
                 void client.invalidateQueries({ queryKey: ["workspace"] });

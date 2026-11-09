@@ -46,12 +46,13 @@ beforeAll(async () => {
     seed.id,
     JSON.stringify(seed.layout),
   ]);
-  for (const p of seed.projects)
+  for (const p of seed.projects) {
     await db.query("select public.commit_project($1,$2,-1,$3)", [
       IDS.myron,
       JSON.stringify(p),
       uid(),
     ]);
+  }
 }, 30000);
 afterAll(async () => {
   await db?.close();
@@ -172,6 +173,51 @@ describe.sequential("database authorization and atomicity", () => {
         uid(),
       ]),
     ).rejects.toThrow("CONFLICT");
+  });
+  it("persists parent grouping and isolates the independently assigned task", async () => {
+    const parent = seed.projects[0];
+    const child = {
+      ...parent,
+      id: uid(),
+      parentProjectId: parent.id,
+      workerId: IDS.leo,
+      title: "Synthetic grouped task",
+      state: "awaiting_agreement",
+      activeAgreementId: null,
+      agreements: [],
+      deliveries: [],
+      revisions: [],
+      proposals: [],
+      invoices: [],
+      activity: [],
+      version: 0,
+    };
+    await db.query("select public.commit_project($1,$2,-1,$3)", [
+      IDS.myron,
+      JSON.stringify(child),
+      uid(),
+    ]);
+    const saved = await db.query<
+      { data: { parentProjectId: string }; worker_id: string }
+    >("select data,worker_id from public.projects where id=$1", [child.id]);
+    expect(saved.rows[0].data.parentProjectId).toBe(parent.id);
+    expect(saved.rows[0].worker_id).toBe(IDS.leo);
+    await asWorker(1);
+    expect(
+      (await db.query("select id from public.projects where id=$1", [child.id]))
+        .rows,
+    ).toHaveLength(0);
+    await asWorker(2);
+    expect(
+      (await db.query("select id from public.projects where id=$1", [child.id]))
+        .rows,
+    ).toHaveLength(1);
+    expect(
+      (await db.query("select id from public.projects where id=$1", [
+        parent.id,
+      ])).rows,
+    ).toHaveLength(0);
+    await db.exec("reset role");
   });
   it("handles duplicate webhook receipt and allows unfinished records to retry", async () => {
     await db.query(

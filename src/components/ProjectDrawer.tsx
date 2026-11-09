@@ -39,15 +39,11 @@ import { type Command, driveUrlSchema } from "../../shared/validation";
 import { mode, scopeAssistant } from "../services";
 import Avatar from "./Avatar";
 import ProjectForm from "./ProjectForm";
-import { FilePicker } from "./WorkspaceFiles";
+import { FilePicker, FilePreview } from "./WorkspaceFiles";
 import { openFile } from "../fileService";
-const workLabels: Record<string, string> = {
-  awaiting_agreement: "Awaiting agreement",
-  in_progress: "In progress",
-  submitted: "Awaiting review",
-  changes_requested: "Changes requested",
-  accepted: "Work accepted",
-};
+import { payableInvoice, taskLabels } from "../../shared/studio";
+import PaymentOverview from "./PaymentOverview";
+const workLabels = taskLabels;
 const tabs = [
   { id: "overview", icon: FileText, label: "Overview" },
   { id: "deliverables", icon: Link, label: "Deliverables" },
@@ -63,6 +59,8 @@ export default function ProjectDrawer({
   initialProjectId,
   initialTab = "overview",
   onClose,
+  onBack,
+  breadcrumb,
   onCommand,
   onIssue,
   onRefresh,
@@ -75,6 +73,8 @@ export default function ProjectDrawer({
   initialProjectId?: string;
   initialTab?: import("../../shared/freelance-canvas").ProjectTab;
   onClose: () => void;
+  onBack?: () => void;
+  breadcrumb?: string;
   onCommand: (c: Command) => Promise<boolean>;
   onIssue: (id: string) => Promise<boolean>;
   onRefresh: (id: string) => Promise<boolean>;
@@ -98,6 +98,10 @@ export default function ProjectDrawer({
   );
   const [editTerms, setEditTerms] = useState(false);
   useEffect(() => {
+    const panel = document.getElementById("project-tab-panel");
+    if (panel) panel.scrollTop = 0;
+  }, [tab, selectedId]);
+  useEffect(() => {
     setSelectedId(initialProjectId ?? projects[0]?.id ?? "");
     setTab(initialFilter === "attention" ? "payments" : initialTab);
   }, [person.id, initialFilter, initialProjectId, initialTab]);
@@ -116,7 +120,7 @@ export default function ProjectDrawer({
         <Dialog.Portal>
           <Dialog.Content
             className="worker-drawer"
-            aria-describedby="worker-description"
+            aria-describedby={undefined}
             onInteractOutside={(e) => {
               if (
                 (e.target as HTMLElement).closest(
@@ -128,7 +132,9 @@ export default function ProjectDrawer({
             }}
           >
             <div className="drawer-top">
-              <span className="eyebrow">THE PEOPLE BEHIND THE WORK</span>
+              <button className="text-button" onClick={onBack ?? onClose}>
+                ← Back to member tasks
+              </button>
               <Dialog.Close
                 className="icon-button"
                 aria-label="Close worker details"
@@ -136,6 +142,7 @@ export default function ProjectDrawer({
                 <X size={20} />
               </Dialog.Close>
             </div>
+            {breadcrumb && <p className="studio-breadcrumb">{breadcrumb}</p>}
             <div className="worker-profile">
               <Avatar person={person} size={64} />
               <div>
@@ -156,7 +163,7 @@ export default function ProjectDrawer({
             )}
             <div className="project-selector">
               <label htmlFor="project-select">
-                PROJECT{" "}
+                {onBack ? "TASK" : "PROJECT"}{" "}
                 <span>
                   {projects.length}{" "}
                   {initialFilter !== "all" ? "matching" : "assigned"}
@@ -165,6 +172,7 @@ export default function ProjectDrawer({
               <div>
                 <select
                   id="project-select"
+                  disabled={!!onBack}
                   value={p?.id ?? ""}
                   onChange={(e) => setSelectedId(e.target.value)}
                 >
@@ -220,6 +228,15 @@ export default function ProjectDrawer({
                     id="project-tab-panel"
                     aria-labelledby={`tab-${tab}`}
                   >
+                    {tab === "overview" && (
+                      <PaymentOverview
+                        project={p}
+                        person={person}
+                        employer={employer}
+                        busy={busy}
+                        onIssue={onIssue}
+                      />
+                    )}
                     {tab === "overview" && (
                       <>
                         <div className="section-heading">
@@ -396,16 +413,82 @@ export default function ProjectDrawer({
                       />
                     )}
                     {tab === "revisions" && (
-                      <Revisions
-                        project={p}
-                        employer={employer}
-                        busy={busy}
-                        onCommand={onCommand}
-                        onNotify={onNotify}
-                      />
+                      <>
+                        <div className="section-heading">
+                          <h3>Latest deliverable</h3>
+                          <button
+                            className="text-button"
+                            onClick={() => setTab("deliverables")}
+                          >
+                            View all versions →
+                          </button>
+                        </div>
+                        {p.deliveries.at(-1)
+                          ? (
+                            <div className="pending-card">
+                              <strong>{p.deliveries.at(-1)!.label}</strong>
+                              <p>{p.deliveries.at(-1)!.note}</p>
+                              {p.deliveries.at(-1)!.fileId &&
+                                  snapshot.files?.find((file) =>
+                                    file.id === p.deliveries.at(-1)!.fileId
+                                  )
+                                ? (
+                                  <FilePreview
+                                    file={snapshot.files.find((file) =>
+                                      file.id === p.deliveries.at(-1)!.fileId
+                                    )!}
+                                    version={p.deliveries.at(-1)!.fileVersion}
+                                  />
+                                )
+                                : (
+                                  <a
+                                    href={p.deliveries.at(-1)!.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    Open deliverable preview ↗
+                                  </a>
+                                )}
+                            </div>
+                          )
+                          : <p>No deliverable submitted yet.</p>}
+                        <PaymentOverview
+                          project={p}
+                          person={person}
+                          employer={employer}
+                          busy={busy}
+                          onIssue={onIssue}
+                        />
+                        {employer && p.state === "submitted" && (
+                          <button
+                            className="button primary"
+                            onClick={() =>
+                              document.querySelector<HTMLTextAreaElement>(
+                                ".revision-composer textarea",
+                              )?.focus()}
+                          >
+                            Add revision
+                          </button>
+                        )}
+                        <Revisions
+                          project={p}
+                          snapshot={snapshot}
+                          employer={employer}
+                          busy={busy}
+                          onCommand={onCommand}
+                          onNotify={onNotify}
+                        />
+                      </>
                     )}
                     {tab === "payments" && (
                       <>
+                        <PaymentOverview
+                          project={p}
+                          person={person}
+                          employer={employer}
+                          busy={busy}
+                          onIssue={onIssue}
+                        />
                         <div className="section-heading">
                           <h3>Payments, in perspective</h3>
                           <Wallet size={17} />
@@ -503,14 +586,14 @@ export default function ProjectDrawer({
                               <p className="error-message">{i.error}</p>
                             )}
                             {i.providerId && <code>{i.providerId}</code>}
-                            {i.recipientUrl && (
+                            {payableInvoice(i) && employer && (
                               <a
                                 className="button secondary"
-                                href={i.recipientUrl}
+                                href={i.recipientUrl!}
                                 target="_blank"
                                 rel="noopener noreferrer"
                               >
-                                Open PayPal invoice
+                                Pay now · PayPal Sandbox
                                 <ExternalLink size={13} />
                               </a>
                             )}
@@ -571,7 +654,7 @@ export default function ProjectDrawer({
                                 <Plus size={15} />
                                 {mode === "demo"
                                   ? "Create simulated invoice"
-                                  : "Create & send sandbox invoice"}
+                                  : "Issue invoice · PayPal Sandbox"}
                               </button>
                             )}
                           {mode === "integrated" && p.origin === "sandbox" && (
@@ -905,12 +988,14 @@ function Deliverables({
   );
 }
 function Revisions({
+  snapshot,
   project: p,
   employer,
   busy,
   onCommand,
   onNotify,
 }: {
+  snapshot: WorkspaceSnapshot;
   project: Project;
   employer: boolean;
   busy: boolean;
@@ -918,6 +1003,9 @@ function Revisions({
   onNotify: (s: string) => void;
 }) {
   const [text, setText] = useState("");
+  const [counterId, setCounterId] = useState<string | null>(null);
+  const [counterAmount, setCounterAmount] = useState("");
+  const [counterNote, setCounterNote] = useState("");
   const [analysis, setAnalysis] = useState<ScopeAnalysis | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [clarifyItem, setClarifyItem] = useState<
@@ -1284,7 +1372,7 @@ function Revisions({
                 new Date(proposal.decidedAt!).toLocaleDateString()
               }.`}
           </p>
-          {!employer &&
+          {proposal.authorId === snapshot.actorId &&
             proposal.status === "pending" &&
             proposal.baseAgreementId !== p.activeAgreementId && (
             <button
@@ -1300,7 +1388,21 @@ function Revisions({
               Rebase on current terms
             </button>
           )}
-          {employer && proposal.status === "pending" && (
+          <p>
+            Proposed by {snapshot.people.find((person) =>
+              person.id === proposal.authorId
+            )
+              ?.name ??
+              (proposal.authorId === p.workerId ? "Freelancer" : "Employer")}
+            {proposal.status === "pending"
+              ? ` · Awaiting ${
+                proposal.authorId === p.workerId ? "employer" : "freelancer"
+              } response`
+              : ""}
+          </p>
+          {proposal.note && <p>{proposal.note}</p>}
+          {proposal.authorId !== snapshot.actorId &&
+            proposal.status === "pending" && (
             <div className="button-row">
               <button
                 disabled={busy}
@@ -1313,22 +1415,70 @@ function Revisions({
                     accept: true,
                   })}
               >
-                Approve revision fee
+                Accept proposed price
               </button>
               <button
                 disabled={busy}
                 className="button secondary"
-                onClick={() =>
-                  void onCommand({
-                    type: "decideProposal",
-                    projectId: p.id,
-                    proposalId: proposal.id,
-                    accept: false,
-                  })}
+                onClick={() => {
+                  setCounterId(proposal.id);
+                  setCounterAmount(
+                    (Number(proposal.amountMinor) / 100).toFixed(2),
+                  );
+                  setCounterNote("");
+                }}
               >
-                Decline
+                Counteroffer
               </button>
             </div>
+          )}
+          {counterId === proposal.id && proposal.status === "pending" && (
+            <form
+              className="stacked-form"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                try {
+                  if (
+                    await onCommand({
+                      type: "counterProposal",
+                      projectId: p.id,
+                      proposalId: proposal.id,
+                      amountMinor: parseAmount(counterAmount),
+                      note: counterNote,
+                    })
+                  ) setCounterId(null);
+                } catch (error) {
+                  onNotify((error as Error).message);
+                }
+              }}
+            >
+              <button
+                type="button"
+                className="text-button"
+                onClick={() =>
+                  setCounterId(null)}
+              >
+                ← Back to proposal
+              </button>
+              <label>
+                Counteroffer price · USD<input
+                  value={counterAmount}
+                  onChange={(e) => setCounterAmount(e.target.value)}
+                  inputMode="decimal"
+                  required
+                />
+              </label>
+              <label>
+                Explanation (optional)<textarea
+                  value={counterNote}
+                  onChange={(e) => setCounterNote(e.target.value)}
+                  maxLength={2000}
+                />
+              </label>
+              <button className="button primary" disabled={busy}>
+                Send counteroffer
+              </button>
+            </form>
           )}
         </div>
       ))}

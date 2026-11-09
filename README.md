@@ -3,6 +3,13 @@
 A visual workspace for creative teams: people, clear agreements, deliveries,
 thoughtful revisions, and payments in perspective.
 
+This workflow review branch uses **Project studio**, **Project whiteboard** and
+**Revisions**, with a shared **Project → Role → Member → Tasks** hierarchy.
+See the [workflow update, verification results and screenshots](docs/workflow-update.md).
+Use the branch's Vercel Preview with `/?demo=1` for labeled, browser-local UI
+review. The new backend commands are not deployed. Older milestone documents
+describe the preceding Work map interface.
+
 [Open the live demo](https://crewcanvas.vercel.app) ·
 [GitHub repository](https://github.com/kashronnycodes/crewcanvas)
 

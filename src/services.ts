@@ -195,12 +195,16 @@ export const repository: CrewRepository = mode === "demo"
           throw new Error("Choose a workspace worker.");
         }
         const a = makeAgreement(command.terms, actor.id, null);
+        if (command.parentProjectId && !s.projects.some((p) =>
+          p.id === command.parentProjectId && !p.parentProjectId && p.workspaceId === s.id))
+          throw new Error("Choose a project in this workspace.");
         a.status = command.publish ? "proposed" : "draft";
         s.projects.push({
           id: uid(),
           workspaceId: s.id,
           workerId: command.workerId,
           title: command.title,
+          parentProjectId: command.parentProjectId,
           state: "awaiting_agreement",
           origin: "sample",
           activeAgreementId: null,

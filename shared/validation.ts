@@ -67,6 +67,7 @@ export const commandSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("createProject"),
+      parentProjectId: id.optional(),
       workerId: id,
       title: z.string().trim().min(2).max(120),
       terms: termsSchema,
@@ -152,6 +153,13 @@ export const commandSchema = z.discriminatedUnion("type", [
       accept: z.boolean(),
     })
     .strict(),
+  z.object({
+    type: z.literal("counterProposal"),
+    projectId: id,
+    proposalId: id,
+    amountMinor: minorSchema,
+    note: z.string().trim().max(2000),
+  }).strict(),
   z
     .object({
       type: z.literal("rebaseProposal"),

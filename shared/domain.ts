@@ -375,18 +375,26 @@ export function execute(
       break;
     }
     case "decideProposal": {
-      employer();
       const proposal = p.proposals.find((x) => x.id === command.proposalId);
       if (!proposal) throw new DomainError("NOT_FOUND", "Proposal not found.");
+      if (proposal.authorId === actor.id) {
+        throw new DomainError(
+          "FORBIDDEN",
+          "Only the other party can respond to this proposal.",
+        );
+      }
+      if (actor.role === "worker") worker();
       if (proposal.status === "accepted" && command.accept) return project;
-      if (proposal.status !== "pending")
+      if (proposal.status !== "pending") {
         throw new DomainError("CONFLICT", "Proposal already decided.");
+      }
       const current = agreed();
-      if (command.accept && proposal.baseAgreementId !== current.id)
+      if (command.accept && proposal.baseAgreementId !== current.id) {
         throw new DomainError(
           "CONFLICT",
           "Agreement changed; ask the worker to submit a rebased proposal.",
         );
+      }
       proposal.status = command.accept ? "accepted" : "declined";
       proposal.decidedAt = now;
       const item = p.revisions
@@ -396,7 +404,8 @@ export function execute(
         const next = makeAgreement(
           {
             ...current,
-            brief: `${current.brief}\n\nApproved addition: ${proposal.description}`,
+            brief:
+              `${current.brief}\n\nApproved addition: ${proposal.description}`,
             deliverables: [...current.deliverables, proposal.description],
             amountMinor: (
               BigInt(current.amountMinor) + BigInt(proposal.amountMinor)
@@ -416,19 +425,72 @@ export function execute(
       } else if (item) item.disposition = "resolved";
       log(
         command.accept
-          ? `Approved addition: ${money(proposal.amountMinor)}${proposal.amountMinor === "0" ? " (charge waived)" : ""}.`
+          ? `Approved addition: ${money(proposal.amountMinor)}${
+            proposal.amountMinor === "0" ? " (charge waived)" : ""
+          }.`
           : "Declined the additional work proposal.",
       );
       break;
     }
-    case "rebaseProposal": {
-      worker();
+    case "counterProposal": {
+      if (actor.role === "worker") worker();
       const old = p.proposals.find((x) => x.id === command.proposalId);
-      if (!old || old.status !== "pending")
+      if (!old || old.status !== "pending") {
         throw new DomainError(
           "CONFLICT",
           "This proposal is no longer pending.",
         );
+      }
+      if (old.authorId === actor.id) {
+        throw new DomainError(
+          "FORBIDDEN",
+          "Wait for the other party to respond.",
+        );
+      }
+      if (
+        old.baseAgreementId !== agreed().id ||
+        p.agreements.some((a) => a.status === "proposed")
+      ) {
+        throw new DomainError(
+          "CONFLICT",
+          "Resolve changed terms and rebase the proposal first.",
+        );
+      }
+      old.status = "superseded";
+      old.decidedAt = now;
+      p.proposals.push({
+        ...old,
+        id: uid(),
+        previousProposalId: old.id,
+        amountMinor: command.amountMinor,
+        note: command.note,
+        authorId: actor.id,
+        status: "pending",
+        createdAt: now,
+        decidedAt: undefined,
+      });
+      log(
+        `Counteroffered ${
+          money(command.amountMinor)
+        }. Total unchanged pending the other party's acceptance.`,
+      );
+      break;
+    }
+    case "rebaseProposal": {
+      if (actor.role === "worker") worker();
+      const old = p.proposals.find((x) => x.id === command.proposalId);
+      if (old && old.authorId !== actor.id) {
+        throw new DomainError(
+          "FORBIDDEN",
+          "Only the proposal author can rebase it.",
+        );
+      }
+      if (!old || old.status !== "pending") {
+        throw new DomainError(
+          "CONFLICT",
+          "This proposal is no longer pending.",
+        );
+      }
       if (old.baseAgreementId === agreed().id) return project;
       old.status = "superseded";
       old.decidedAt = now;
@@ -441,7 +503,7 @@ export function execute(
         decidedAt: undefined,
       });
       log(
-        "Worker rebased an additional-work proposal on the latest accepted terms. Price still requires employer approval.",
+        "Proposal author rebased the additional work on the latest accepted terms. Price still requires the other party's acceptance.",
       );
       break;
     }

@@ -14,8 +14,8 @@ export default defineConfig({
     { command: "npm run dev -- --port 3101 --strictPort", url: "http://127.0.0.1:3101", reuseExistingServer: false, env: { VITE_APP_MODE: "integrated" } },
   ],
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "Mobile Chrome", use: { ...devices["Pixel 5"] } },
+    { name: "chromium", use: { ...devices["Desktop Chrome"], channel: process.env.CREW_BROWSER_CHANNEL } },
+    { name: "Mobile Chrome", use: { ...devices["Pixel 5"], channel: process.env.CREW_BROWSER_CHANNEL } },
     { name: "Mobile Safari", use: { ...devices["iPhone 12"] } },
   ],
 });

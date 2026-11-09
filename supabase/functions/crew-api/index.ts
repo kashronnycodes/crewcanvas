@@ -19,6 +19,7 @@ import {
   env,
   errorResponse,
   HttpError,
+  loadProject,
   providerStore,
   respond,
   snapshot,
@@ -195,12 +196,20 @@ export async function handler(req: Request): Promise<Response> {
           );
         }
         const a = makeAgreement(command.terms, user.id, null);
+        if (command.parentProjectId) {
+          const parent = await loadProject(command.parentProjectId);
+          assertProjectAccess(user, parent);
+          if (parent.parentProjectId) {
+            throw new DomainError("VALIDATION", "Choose a top-level project.");
+          }
+        }
         a.status = command.publish ? "proposed" : "draft";
         const p: Project = {
           id: uid(),
           workspaceId: user.workspaceId,
           workerId: command.workerId,
           title: command.title,
+          parentProjectId: command.parentProjectId,
           state: "awaiting_agreement",
           origin: "sandbox",
           activeAgreementId: null,

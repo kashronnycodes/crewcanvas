@@ -107,6 +107,7 @@ export default function ProjectForm({
           }
         })}
       >
+        <button type="button" className="text-button" onClick={onClose}>← Back{projectId ? " to task details" : " to workspace"}</button>
         {!projectId && (
           <div className="field-grid">
             <label>

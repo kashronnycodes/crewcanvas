@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   cleanup,
   fireEvent,
@@ -11,21 +11,6 @@ import App from "../src/App";
 import { mutateDemo, repository, resetDemo } from "../src/services";
 import { projectFinance } from "../shared/workspace";
 import type { WorkspaceSnapshot } from "../shared/types";
-vi.mock("../src/components/Canvas", () => ({
-  default: (
-    { snapshot, onSelect }: { snapshot: WorkspaceSnapshot; onSelect: Function },
-  ) => (
-    <button
-      onClick={() => {
-        const p = snapshot.projects[0];
-        onSelect(p.workerId, "all", p.id, "deliverables");
-      }}
-    >
-      Open submitted work card
-    </button>
-  ),
-  StatusBadges: () => null,
-}));
 beforeEach(() => {
   resetDemo();
   Object.defineProperty(window, "matchMedia", {
@@ -62,9 +47,13 @@ async function openSubmission() {
       <App />
     </QueryClientProvider>,
   );
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Open submitted work card" }),
-  );
+  const snapshot = await repository.load();
+  const task = snapshot.projects[0], person = snapshot.people.find(p => p.id === task.workerId)!;
+  fireEvent.click(await screen.findByRole("button", { name: task.title }));
+  fireEvent.click(await screen.findByRole("button", { name: `Open role ${person.role}` }));
+  fireEvent.click(await screen.findByRole("button", { name: `Open member ${person.name}` }));
+  fireEvent.click(await screen.findByRole("button", { name: "Task details →" }));
+  fireEvent.click(await screen.findByRole("tab", { name: "Deliverables" }));
   expect(
     (await screen.findByRole("tab", { name: "Deliverables" })).getAttribute(
       "aria-selected",

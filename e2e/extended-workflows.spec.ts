@@ -1,10 +1,12 @@
+import { openTask, closePanels } from "./helpers";
 import { Buffer } from "node:buffer";
 import { expect, test } from "@playwright/test";
 
 const avaId = "20000000-0000-4000-8000-000000000002";
 
 async function openProjects(page: import("@playwright/test").Page) {
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await closePanels(page);
+  await page.getByRole("button", { name: "Project studio", exact: true }).click();
 }
 
 async function createProject(
@@ -40,7 +42,7 @@ test("assignment is visible only to the assigned freelancer and updated terms pr
     label: "Jacob · Worker",
   });
   await openProjects(page);
-  await page.getByRole("button", { name: projectName, exact: true }).click();
+  await openTask(page, projectName);
   await page.getByRole("button", { name: "Accept agreement" }).click();
   await expect(page.getByText("Mutually accepted")).toBeVisible();
 
@@ -48,7 +50,7 @@ test("assignment is visible only to the assigned freelancer and updated terms pr
     label: "Myron · Employer",
   });
   await openProjects(page);
-  await page.getByRole("button", { name: projectName, exact: true }).click();
+  await openTask(page, projectName);
   await page.getByRole("button", { name: "Propose changes" }).click();
   await page.getByLabel("The brief").fill(
     "Updated scope: produce two export sizes for the campaign.",
@@ -62,7 +64,7 @@ test("assignment is visible only to the assigned freelancer and updated terms pr
     label: "Jacob · Worker",
   });
   await openProjects(page);
-  await page.getByRole("button", { name: projectName, exact: true }).click();
+  await openTask(page, projectName);
   await page.getByRole("button", { name: "Accept agreement" }).click();
   await expect(page.getByRole("tabpanel").getByText(
     "Updated scope: produce two export sizes for the campaign.",
@@ -84,20 +86,20 @@ test("freelancer can decline a proposed agreement", async ({ page }) => {
     label: "Jacob · Worker",
   });
   await openProjects(page);
-  await page.getByRole("button", { name: projectName, exact: true }).click();
+  await openTask(page, projectName);
   await page.getByRole("button", { name: "Decline", exact: true }).click();
   await page.getByText(/Agreement history · 1 version/).click();
   await expect(page.locator(".agreement-history").getByText(
     "VERSION 1 · DECLINED",
   )).toBeVisible();
-  await expect(page.getByText("Awaiting agreement", { exact: true }))
+  await expect(page.getByText("Awaiting acceptance", { exact: true }))
     .toBeVisible();
 });
 
 test("employer requests a revision and freelancer responds; request persists after reload", async ({ page }) => {
   await page.goto("/");
   await openProjects(page);
-  await page.getByRole("button", { name: "Event recap", exact: true }).click();
+  await openTask(page, "Event recap");
   await page.getByRole("tab", { name: "Deliverables" }).click();
   await page.getByRole("button", { name: "Request Revision" }).click();
 
@@ -112,7 +114,7 @@ test("employer requests a revision and freelancer responds; request persists aft
     label: "Jeshua · Worker",
   });
   await openProjects(page);
-  await page.getByRole("button", { name: "Event recap", exact: true }).click();
+  await openTask(page, "Event recap");
   await page.getByRole("tab", { name: "Revisions" }).click();
   await page.getByRole("button", { name: "Accept as included" }).click();
   await expect(page.getByText("included", { exact: true })).toBeVisible();
@@ -123,7 +125,7 @@ test("employer requests a revision and freelancer responds; request persists aft
     label: "Jeshua · Worker",
   });
   await openProjects(page);
-  await page.getByRole("button", { name: "Event recap", exact: true }).click();
+  await openTask(page, "Event recap");
   await page.getByRole("tab", { name: "Revisions" }).click();
   await expect(page.getByText(feedback)).toBeVisible();
   await expect(page.getByText("included", { exact: true })).toBeVisible();
@@ -139,7 +141,7 @@ test("uploads a project file and submits its stored version as delivery", async 
     label: "Jacob · Worker",
   });
   await openProjects(page);
-  await page.getByRole("button", { name: projectName, exact: true }).click();
+  await openTask(page, projectName);
   await page.getByRole("button", { name: "Accept agreement" }).click();
   await page.getByRole("tab", { name: "Deliverables" }).click();
 
@@ -158,7 +160,7 @@ test("uploads a project file and submits its stored version as delivery", async 
 
   await page.reload();
   await openProjects(page);
-  await page.getByRole("button", { name: projectName, exact: true }).click();
+  await openTask(page, projectName);
   await page.getByRole("tab", { name: "Deliverables" }).click();
   await expect(page.getByText("v1 · uploaded final")).toBeVisible();
   await expect(page.getByRole("button", { name: /Open submitted file · v1/ }))
@@ -174,8 +176,7 @@ test("replaced workspace files retain version history after refresh", async ({ p
     label: "Jacob · Worker",
   });
   await openProjects(page);
-  await page.getByRole("button", { name: "Recruitment cut", exact: true })
-    .click();
+  await openTask(page, "Recruitment cut");
   await page.getByRole("tab", { name: "Deliverables" }).click();
   await page.locator(".file-picker input[type=file]").setInputFiles({
     name: fileName,
@@ -188,60 +189,31 @@ test("replaced workspace files retain version history after refresh", async ({ p
   await page.getByLabel("Demo viewing role").selectOption({
     label: "Myron · Employer",
   });
-  await page.getByRole("button", { name: "Work map", exact: true }).click();
-  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
-  await page.getByRole("button", { name: "Fit to screen" }).click();
-  const fileCard = page.locator(".react-flow__node-work").filter({
-    hasText: fileName,
-  });
-  await fileCard.getByRole("button", { name: fileName, exact: true })
-    .dispatchEvent("click");
-  const inspector = page.getByLabel("Canvas object inspector");
-  await inspector.getByRole("button", {
-    name: "Replace with new version",
-  }).click();
-  await inspector.locator('input[type="file"]').setInputFiles({
-    name: fileName,
-    mimeType: "text/plain",
-    buffer: Buffer.from("Second version."),
-  });
-  await expect(fileCard).toContainText("Stored · v2");
-  await fileCard.getByRole("button", { name: fileName, exact: true })
-    .dispatchEvent("click");
-  await inspector.getByText("Version history").click();
-  await expect(inspector.getByRole("button", { name: `v1 · ${fileName}` }))
-    .toBeVisible();
-  await expect(inspector.getByRole("button", { name: `v2 · ${fileName}` }))
-    .toBeVisible();
-
+  await closePanels(page);
+  await page.getByRole("button", { name: "Files & workspace tools" }).click();
+  await page.getByRole("button", { name: `${fileName} · v1`, exact: true }).click();
+  await page.getByRole("button", { name: "Replace with new version" }).click();
+  await page.locator('input[type="file"]').last().setInputFiles({ name: fileName, mimeType: "text/plain", buffer: Buffer.from("Second version.") });
+  await expect(page.getByRole("button", { name: `${fileName} · v2`, exact: true })).toBeVisible();
+  await page.getByText("Version history", { exact: true }).click();
+  await expect(page.getByRole("button", { name: `v1 · ${fileName}` })).toBeVisible();
   await page.reload();
-  await page.getByRole("button", { name: "Work map", exact: true }).click();
-  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
-  await page.getByRole("button", { name: "Fit to screen" }).click();
-  await page.locator(".react-flow__node-work").filter({ hasText: fileName })
-    .getByRole("button", { name: fileName, exact: true })
-    .dispatchEvent("click");
-  const restoredInspector = page.getByLabel("Canvas object inspector");
-  await restoredInspector.getByText("Version history").click();
-  await expect(
-    restoredInspector.getByRole("button", { name: `v1 · ${fileName}` }),
-  ).toBeVisible();
-  await expect(
-    restoredInspector.getByRole("button", { name: `v2 · ${fileName}` }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "Files & workspace tools" }).click();
+  await page.getByRole("button", { name: `${fileName} · v2`, exact: true }).click();
+  await page.getByText("Version history", { exact: true }).click();
+  await expect(page.getByRole("button", { name: `v1 · ${fileName}` })).toBeVisible();
+  await expect(page.getByRole("button", { name: `v2 · ${fileName}` })).toBeVisible();
 });
 
 test("rejects unsupported and empty project files", async ({ page }) => {
   await page.goto("/");
   await openProjects(page);
-  await page.getByRole("button", { name: "Recruitment cut", exact: true })
-    .click();
+  await openTask(page, "Recruitment cut");
   await page.getByLabel("Demo viewing role").selectOption({
     label: "Jacob · Worker",
   });
   await openProjects(page);
-  await page.getByRole("button", { name: "Recruitment cut", exact: true })
-    .click();
+  await openTask(page, "Recruitment cut");
   await page.getByRole("tab", { name: "Deliverables" }).click();
 
   const upload = page.locator(".file-picker input[type=file]");
@@ -263,7 +235,7 @@ test("rejects unsupported and empty project files", async ({ page }) => {
 test("freelancer proposes extra work and employer accepts it", async ({ page }) => {
   await page.goto("/");
   await openProjects(page);
-  await page.getByRole("button", { name: "Event recap", exact: true }).click();
+  await openTask(page, "Event recap");
   await page.getByRole("tab", { name: "Deliverables" }).click();
   await page.getByRole("button", { name: "Request Revision" }).click();
   await page.getByLabel("Your feedback").fill(
@@ -276,7 +248,7 @@ test("freelancer proposes extra work and employer accepts it", async ({ page }) 
     label: "Jeshua · Worker",
   });
   await openProjects(page);
-  await page.getByRole("button", { name: "Event recap", exact: true }).click();
+  await openTask(page, "Event recap");
   await page.getByRole("tab", { name: "Revisions" }).click();
   await page.getByRole("button", { name: /Propose revision fee/ }).click();
   await page.getByLabel("Additional price · USD").fill("25.00");
@@ -288,9 +260,9 @@ test("freelancer proposes extra work and employer accepts it", async ({ page }) 
     label: "Myron · Employer",
   });
   await openProjects(page);
-  await page.getByRole("button", { name: "Event recap", exact: true }).click();
+  await openTask(page, "Event recap");
   await page.getByRole("tab", { name: "Revisions" }).click();
-  await page.getByRole("button", { name: "Approve revision fee" }).click();
+  await page.getByRole("button", { name: "Accept proposed price" }).click();
   await expect(
     page.getByRole("tabpanel", { name: "Revisions" }).getByText(
       "accepted",
@@ -301,7 +273,7 @@ test("freelancer proposes extra work and employer accepts it", async ({ page }) 
 
 test("project whiteboard note edits persist after refresh", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Project whiteboard" }).click();
+  await page.getByRole("button", { name: "Files & workspace tools" }).click();
   await expect(page.getByLabel("Project collaboration whiteboard"))
     .toBeVisible();
   await expect(page.getByRole("button", { name: "Add sticky note" }))
@@ -313,78 +285,30 @@ test("project whiteboard note edits persist after refresh", async ({ page }) => 
   const content = inspector.getByLabel("Content");
   await content.fill("E2E whiteboard note survives refresh");
   await inspector.getByRole("button", { name: "Save object" }).click();
-  await expect(page.getByText("Saved in this browser")).toBeVisible();
+  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible();
   await expect(page.locator(".board-object-text")).toContainText(
     "E2E whiteboard note survives refresh",
   );
 
   await page.reload();
-  await page.getByRole("button", { name: "Project whiteboard" }).click();
+  await page.getByRole("button", { name: "Files & workspace tools" }).click();
   await expect(page.locator(".board-object-text")).toContainText(
     "E2E whiteboard note survives refresh",
   );
 });
 
-test("workspace canvas group movement persists after refresh", async ({ page }) => {
-  test.skip(
-    test.info().project.name.startsWith("Mobile"),
-    "The workspace canvas is replaced by the project list on mobile.",
-  );
+test("whiteboard hierarchy is automatically spaced and retains task assignments after refresh", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
-
-  const group = page.locator(".react-flow__node-group").filter({
-    hasText: "Hackathon Game Winners",
-  });
-  await expect(group).toBeVisible();
-  const before = await page.evaluate(() => {
-    const snapshot = JSON.parse(
-      localStorage.getItem("crewcanvas.demo.v1") ?? "{}",
-    );
-    return snapshot.layout.groups.find(
-      (item: { name: string }) => item.name === "Hackathon Game Winners",
-    );
-  });
-  const bounds = await group.boundingBox();
-  expect(bounds).not.toBeNull();
-  await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(
-    bounds!.x + bounds!.width / 2 + 90,
-    bounds!.y + bounds!.height / 2 + 60,
-    { steps: 8 },
-  );
-  await page.mouse.up();
-
-  await expect.poll(async () =>
-    page.evaluate(() => {
-      const snapshot = JSON.parse(
-        localStorage.getItem("crewcanvas.demo.v1") ?? "{}",
-      );
-      return snapshot.layout.groups.find(
-        (item: { name: string }) => item.name === "Hackathon Game Winners",
-      );
-    })
-  ).not.toEqual(before);
-  const after = await page.evaluate(() => {
-    const snapshot = JSON.parse(
-      localStorage.getItem("crewcanvas.demo.v1") ?? "{}",
-    );
-    return snapshot.layout.groups.find(
-      (item: { name: string }) => item.name === "Hackathon Game Winners",
-    );
-  });
-
+  await page.getByRole("button", { name: "Project whiteboard", exact: true }).click();
+  await expect(page.locator(".hierarchy-card").first()).toBeVisible();
+  const data = await page.evaluate(() => localStorage.getItem("crewcanvas.demo.v1"));
+  const positions = await page.locator(".react-flow__node-hierarchy").evaluateAll(nodes => nodes.map(node => ({x: node.getBoundingClientRect().x, y: node.getBoundingClientRect().y, w: node.getBoundingClientRect().width, h: node.getBoundingClientRect().height})));
+  for (let i = 0; i < positions.length; i++) for (let j = i + 1; j < positions.length; j++) {
+    const a = positions[i], b = positions[j];
+    expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
+  }
   await page.reload();
-  const restored = await page.evaluate(() => {
-    const snapshot = JSON.parse(
-      localStorage.getItem("crewcanvas.demo.v1") ?? "{}",
-    );
-    return snapshot.layout.groups.find(
-      (item: { name: string }) => item.name === "Hackathon Game Winners",
-    );
-  });
-  expect(restored).toEqual(after);
+  expect(await page.evaluate(() => localStorage.getItem("crewcanvas.demo.v1"))).toBe(data);
 });
 
 test("collapsed workspace canvas groups persist after refresh", async ({ page }) => {
@@ -393,9 +317,10 @@ test("collapsed workspace canvas groups persist after refresh", async ({ page })
     "Canvas group controls are desktop-only; mobile gets a separate responsive check.",
   );
   await page.goto("/");
-  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
+  await page.getByRole("button", { name: "Files & workspace tools" }).click();
+  await page.getByText("People & saved role groups", { exact: true }).click();
   const collapseButton = page.getByRole("button", { name: /^Collapse / }).first();
-  const expandedName = await collapseButton.getAttribute("aria-label");
+  const expandedName = await collapseButton.textContent();
   expect(expandedName).toBeTruthy();
   const collapsedName = expandedName!.replace("Collapse ", "Expand ");
   await collapseButton.click();
@@ -411,10 +336,11 @@ test("collapsed workspace canvas groups persist after refresh", async ({ page })
       )?.collapsed;
     }, collapsedName)
   ).toBe(true);
-  await expect(page.getByText("All changes saved")).toBeVisible();
+
 
   await page.reload();
-  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
+  await page.getByRole("button", { name: "Files & workspace tools" }).click();
+  await page.getByText("People & saved role groups", { exact: true }).click();
   await expect(page.getByRole("button", { name: collapsedName })).toBeVisible();
 });
 
@@ -425,9 +351,9 @@ test("mobile viewport keeps project navigation usable without horizontal page ov
   );
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: "Projects", exact: true }))
+  await expect(page.getByRole("button", { name: "Project studio", exact: true }))
     .toBeVisible();
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: "Project studio", exact: true }).click();
   await expect(page.getByRole("heading", {
     name: "Good work starts with your people.",
   })).toBeVisible();

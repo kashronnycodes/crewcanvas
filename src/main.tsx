@@ -11,6 +11,7 @@ import "./design-tokens.css";
 import "./redesign.css";
 import "./workspace.css";
 import "./studio.css";
+import "./workflow.css";
 import { applyTheme, initialTheme } from "./theme";
 applyTheme(initialTheme());
 const queryClient = new QueryClient({

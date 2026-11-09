@@ -1,3 +1,4 @@
+import { openTask, closePanels } from "./helpers";
 import { expect, test, type Page } from "@playwright/test";
 import { DEMO_ACCOUNTS } from "../shared/publicDemo";
 
@@ -8,7 +9,7 @@ async function login(page: Page, index: number) {
   await expect(page.getByText("Interactive demo", { exact: false }).first()).toBeVisible();
 }
 async function projects(page: Page) {
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: "Project studio", exact: true }).click();
 }
 for (const [index, account] of DEMO_ACCOUNTS.entries()) {
   test(`${account.name} enters with the correct role and survives refresh`, async ({ page }) => {
@@ -44,7 +45,7 @@ test("employer assignment becomes an authentic freelancer agreement and submissi
   await projects(page);
   await expect(page.getByRole("button", { name: "Judge campaign", exact: true })).toHaveCount(0);
   await page.getByLabel("Demo viewing role").selectOption(DEMO_ACCOUNTS[1].id);
-  await page.getByRole("button", { name: "Judge campaign", exact: true }).click();
+  await openTask(page, "Judge campaign");
   await page.getByRole("button", { name: "Accept agreement", exact: true }).click();
   await page.getByRole("tab", { name: "Deliverables" }).click();
   await page.getByLabel("Submission source").selectOption("link");
@@ -57,11 +58,11 @@ test("employer assignment becomes an authentic freelancer agreement and submissi
 test("seeded revision fee can be accepted and the file opens", async ({ page }) => {
   await login(page, 0);
   await projects(page);
-  await page.getByRole("button", { name: "Thumbnails", exact: true }).click();
+  await openTask(page, "Thumbnails");
   await page.getByRole("tab", { name: "Revisions" }).click();
   await expect(page.getByText("Five thumbnails in an additional visual direction", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Approve revision fee" }).click();
-  await expect(page.getByRole("button", { name: "Approve revision fee" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Accept proposed price" }).click();
+  await expect(page.getByRole("button", { name: "Accept proposed price" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Deliverables" }).click();
   const popup = page.waitForEvent("popup");
   await page.getByRole("button", { name: "campaign-deliverable.txt · v1" }).click();
