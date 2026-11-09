@@ -15,12 +15,13 @@ import {
 import { studioProjects, taskLabels, taskPayment } from "../../shared/studio";
 import { type StudioRoute, useStudioNavigation } from "../studioNavigation";
 import Modal from "./Modal";
-import TaskForm from "./TaskForm";
+import ProjectForm from "./ProjectForm";
+import { workflowCollections } from "../../shared/workflow";
 import ProjectDrawer from "./ProjectDrawer";
 import WorkspaceAssistant from "./WorkspaceAssistant";
 import StudioOrganization from "./StudioOrganization";
 import { FileInspector, FilePicker } from "./WorkspaceFiles";
-const HierarchyBoard = lazy(() => import("./HierarchyBoard"));
+const WorkflowCanvas = lazy(() => import("./WorkflowCanvas"));
 const ProjectBoard = lazy(() => import("./ProjectBoard"));
 
 function TaskCard(
@@ -114,19 +115,23 @@ export default function StudioWorkspace(
     onSaveLayout,
     busy,
     notify,
+    onInvite,
   }: {
     snapshot: WorkspaceSnapshot;
-    view: "list" | "board" | "revisions";
+    view: "studio" | "list" | "board" | "revisions";
     search: string;
     onCommand: (c: Command) => Promise<boolean>;
     onIssue: (id: string) => Promise<boolean>;
     onRefresh: (id: string) => Promise<boolean>;
     busy: boolean;
     notify: (text: string) => void;
+    onInvite: (role?: string) => void;
     onSaveLayout: (layout: CanvasLayout) => Promise<unknown>;
   },
 ) {
-  const { route, open, back } = useStudioNavigation(s.id);
+  const { route, open, back, close } = useStudioNavigation(
+    `${s.id}:${s.actorId}`,
+  );
   const employer =
     s.people.find((p) => p.id === s.actorId)?.accessRole === "employer";
   const projects = studioProjects(s);
@@ -146,8 +151,10 @@ export default function StudioWorkspace(
       );
       if (!person || !assignment) return;
       open({
-        projectId: assignment.parentProjectId ?? assignment.id,
-        role: person.role,
+        projectId: projects.find((p) =>
+          p.tasks.some((t) => t.id === assignment.id)
+        )?.id,
+        role: assignment.organization?.roleId ?? person.role,
         memberId: id,
         ...(projectId || filter === "attention"
           ? {
@@ -161,9 +168,16 @@ export default function StudioWorkspace(
     return () => window.removeEventListener("crewcanvas:open-work", select);
   }, [s, open]);
   const project = projects.find((p) => p.id === route.projectId);
-  const role = project?.roles.find((r) => r.name === route.role);
+  const role = project?.roles.find((r) =>
+    r.name === route.role || r.id === route.role
+  );
   const member = role?.members.find((m) => m.person.id === route.memberId);
   const task = member?.tasks.find((t) => t.id === route.taskId);
+  const collections = workflowCollections(s);
+  const formCollection = collections.find((c) => c.id === project?.id) ??
+    collections[0];
+  const formRole = formCollection.roles.find((r) => r.id === role?.id) ??
+    formCollection.roles[0];
   const [fileId, setFileId] = useState<string | null>(null);
   const file = s.files?.find((f) => f.id === fileId);
   function go(next: StudioRoute) {
@@ -187,10 +201,13 @@ export default function StudioWorkspace(
     member?.person.name,
     task?.title,
   ].filter(Boolean).join(" / ");
+  const canvasView = view === "studio" || view === "board";
   return (
-    <div className="studio-workspace">
+    <div
+      className={`studio-workspace ${canvasView ? "has-reference-canvas" : ""}`}
+    >
       <div className="studio-heading">
-        <div>
+        <div hidden={canvasView}>
           <span className="eyebrow">PROJECT → ROLE → MEMBER → TASKS</span>
           <h2>
             {view === "board"
@@ -201,7 +218,7 @@ export default function StudioWorkspace(
           </h2>
         </div>
         <div className="button-row">
-          {employer && (
+          {employer && !canvasView && (
             <button
               className="button primary"
               onClick={() => go({ form: true })}
@@ -219,8 +236,23 @@ export default function StudioWorkspace(
       </div>
       <WorkspaceAssistant snapshot={s} />
       <Suspense fallback={<p role="status">Opening whiteboard…</p>}>
-        {view === "board"
-          ? <HierarchyBoard snapshot={s} search={search} onOpen={go} />
+        {canvasView
+          ? (
+            <WorkflowCanvas
+              snapshot={s}
+              onSave={onSaveLayout as (
+                layout: CanvasLayout,
+              ) => Promise<CanvasLayout | undefined>}
+              onOpen={() => {}}
+              onCommand={onCommand}
+              onInvite={onInvite}
+              notify={notify}
+              detailedByDefault={view === "board"}
+              search={search}
+              navigation={{ route, open: go, back, close }}
+              detailsOpen={!!task}
+            />
+          )
           : view === "revisions"
           ? (
             <div className="revisions-members">
@@ -252,7 +284,14 @@ export default function StudioWorkspace(
                               onOpen={() =>
                                 go({
                                   projectId: project.id,
-                                  role: person.role,
+                                  role: project.roles.find((r) =>
+                                    r.members.some((m) =>
+                                      m.person.id === person.id &&
+                                      m.tasks.some((t) =>
+                                        t.id === task.id
+                                      )
+                                    )
+                                  )?.id ?? person.role,
                                   memberId: person.id,
                                   taskId: task.id,
                                 })}
@@ -338,19 +377,51 @@ export default function StudioWorkspace(
             : "Create a project or invite a member to get started."}
         </p>
       )}
-      {route.form
+      {route.form && !canvasView
         ? (
-          <TaskForm
-            snapshot={s}
-            workerId={member?.person.id}
-            parentProjectId={project?.id}
+          <ProjectForm
+            people={s.people}
+            task={{
+              collection: formCollection,
+              collections,
+              roleId: formRole?.id ?? "",
+              memberId: member?.person.id,
+              memberSpecific: !!member,
+            }}
             onClose={back}
             onSubmit={onCommand}
+            onEnsureMember={async (collectionId, roleId, memberId) => {
+              const current = collections.find((c) => c.id === collectionId)
+                ?.roles.find((r) => r.id === roleId);
+              if (!current) return false;
+              if (s.layout.workflow && current.members.includes(memberId)) {
+                return true;
+              }
+              return !!await onSaveLayout({
+                ...s.layout,
+                workflow: collections.map((c) =>
+                  c.id === collectionId
+                    ? {
+                      ...c,
+                      roles: c.roles.map((r) =>
+                        r.id === roleId
+                          ? {
+                            ...r,
+                            members: [...new Set([...r.members, memberId])],
+                          }
+                          : r
+                      ),
+                    }
+                    : c
+                ),
+              });
+            }}
           />
         )
         : task
         ? (
           <ProjectDrawer
+            studio
             person={member!.person}
             snapshot={s}
             initialFilter="all"
@@ -390,7 +461,7 @@ export default function StudioWorkspace(
                   if (t && parent && person) {
                     go({
                       projectId: parent.id,
-                      role: person.role,
+                      role: t.organization?.roleId ?? person.role,
                       memberId: workerId,
                       taskId: id,
                     });
@@ -447,7 +518,7 @@ export default function StudioWorkspace(
             </details>
           </Modal>
         )
-        : project
+        : project && !canvasView && !route.form
         ? (
           <Modal
             wide

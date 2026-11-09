@@ -14,12 +14,22 @@ export async function closePanels(page: Page) {
 }
 export async function openTask(page: Page, title: string) {
   await closePanels(page);
-  await page.getByRole("button", { name: "Project studio", exact: true })
-    .click();
-  await page.getByRole("button", { name: title, exact: true }).click();
-  await page.getByRole("button", { name: /^Open role / }).first().click();
-  await page.getByRole("button", { name: /^Open member / }).first().click();
-  await page.getByRole("button", { name: "Task details →", exact: true })
+  await page.getByRole("button", { name: "Task list", exact: true }).click();
+  const name = await page.evaluate((title) => {
+    const s = JSON.parse(
+      localStorage.getItem("crewcanvas.public-demo.v1") ??
+        localStorage.getItem("crewcanvas.demo.v1")!,
+    );
+    return s.people.find((p: { id: string }) =>
+      p.id ===
+        s.projects.find((t: { title: string }) => t.title === title).workerId
+    ).name;
+  }, title);
+  await page.getByRole("button", { name: `Open member ${name}`, exact: true })
     .first().click();
+  await page.locator(".studio-task").filter({ hasText: title }).getByRole(
+    "button",
+    { name: "Task details →", exact: true },
+  ).click();
   await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
 }

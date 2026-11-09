@@ -3,126 +3,132 @@ import { mkdirSync } from "node:fs";
 import { closePanels, openTask } from "./helpers";
 
 test(
-  "member task form, general assignment, shared whiteboard and browser Back",
+  "reference canvas shares navigation, fixed member forms, assignments and whiteboard tasks",
   async ({ page }, info) => {
-    const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
     if (info.project.name === "chromium") {
       await page.setViewportSize({ width: 1440, height: 1100 });
     }
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
     await page.goto("/");
     await expect(page.getByRole("button", { name: "Work map", exact: true }))
       .toHaveCount(0);
     await page.getByLabel("Search people and projects").fill("Recruitment cut");
-    await page.getByRole("button", { name: "Recruitment cut", exact: true })
+    const fixture = await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem("crewcanvas.demo.v1")!);
+      const t = s.projects.find((p: { title: string }) =>
+        p.title === "Recruitment cut"
+      );
+      return s.people.find((p: { id: string }) => p.id === t.workerId);
+    });
+    if ((page.viewportSize()?.width ?? 1440) < 760) {
+      await page.getByLabel(`Open role ${fixture.role}`, { exact: true })
+        .click();
+    } else {await page.locator(".hierarchy-role").getByRole("button", {
+        name: fixture.role,
+        exact: true,
+      }).click();}
+    await page.locator(".roster-member").filter({ hasText: fixture.name })
       .click();
-    await page.getByRole("button", { name: /^Open role / }).click();
-    await page.getByRole("button", { name: /^Open member / }).click();
-    const memberHeading = await page.getByRole("dialog").getByRole("heading")
-      .first().textContent();
-    await page.getByRole("button", { name: "Add task", exact: true }).click();
+    const member = page.getByRole("complementary", { name: "Member tasks" });
+    await member.getByRole("button", { name: "+ Add task", exact: true })
+      .click();
     await expect(page.getByRole("combobox", { name: "Project", exact: true }))
       .toHaveCount(0);
-    await expect(page.getByRole("combobox", { name: "Role", exact: true }))
-      .toHaveCount(0);
-    await expect(page.getByRole("combobox", { name: "Assigned member" }))
-      .toHaveCount(0);
+    await expect(
+      page.getByRole("combobox", { name: "Project role", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("combobox", { name: "Assigned to", exact: true }),
+    ).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Agreement", exact: true }))
       .toHaveCount(0);
     await expect(page.getByRole("dialog")).toContainText(
-      "Assigned to jacob jaun da goat",
+      `Assigned to ${fixture.name}`,
     );
+    if (info.project.name === "chromium") {
+      await page.screenshot({
+        path: info.outputPath("merged-member-form.png"),
+        fullPage: true,
+      });
+    }
     await page.getByLabel("Task title").fill("Member export task");
-    await page.getByLabel("Description", { exact: true }).fill(
+    await page.getByLabel("The brief").fill(
       "Prepare the final member-specific export.",
     );
-    await page.getByLabel("Proposed task price · USD").fill("19.99");
-    if (info.project.name === "chromium") {
-      mkdirSync("docs/screenshots", { recursive: true });
-      await page.screenshot({
-        path: "docs/screenshots/member-task-form.png",
-        animations: "disabled",
-      });
-    }
-    await page.getByRole("button", { name: "Save task" }).click();
-    await expect(page.getByRole("heading", { name: memberHeading! }))
-      .toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Member export task", exact: true }),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Member export task", exact: true })
+    await page.getByRole("textbox", { name: /Deliverables/ }).fill(
+      "One final MP4",
+    );
+    await page.getByRole("button", { name: "Create task & propose terms" })
       .click();
-    await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
+    await expect(member).toBeVisible();
+    await page.getByLabel("Search people and projects").clear();
+    await member.getByRole("button", {
+      name: "Member export task",
+      exact: true,
+    }).click();
+    await page.getByRole("tab", { name: "Overview" }).click();
     await expect(page.getByLabel("Task payment responsibilities"))
       .toContainText("Not accepted yet");
-    const length = await page.evaluate(() => history.length);
     await page.getByRole("button", { name: "← Back to member tasks" }).click();
-    await expect(page.getByRole("heading", { name: memberHeading! }))
-      .toBeVisible();
+    await expect(member).toBeVisible();
     await page.goBack();
-    await expect(page.getByRole("heading", { name: /· members$/ }))
+    await expect(page.getByRole("complementary", { name: "Role roster" }))
       .toBeVisible();
     await page.getByRole("button", { name: "← Back to project roles" }).click();
-    await expect(page.getByRole("heading", { name: "Project roles" }))
-      .toBeVisible();
+    await expect(
+      page.getByRole("complementary", { name: "Project roles directory" }),
+    ).toBeVisible();
     await page.goBack();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.getByLabel("Search people and projects")).toHaveValue(
-      "Recruitment cut",
-    );
-    expect(await page.evaluate(() => history.length)).toBe(length);
-    await page.getByLabel("Search people and projects").clear();
-    await page.getByRole("button", { name: "Add task", exact: true }).click();
-    await page.getByLabel("Assigned member").selectOption({
-      label: "vincent damaso da best · Hackathon Game Winners",
-    });
-    await page.getByRole("combobox", { name: "Project", exact: true })
-      .selectOption({ label: "Recruitment cut" });
+    await expect(
+      page.getByRole("complementary", { name: "Project roles directory" }),
+    ).toHaveCount(0);
+    await page.locator(".workflow-heading").getByRole("button", {
+      name: "+ Add task",
+      exact: true,
+    }).click();
+    await page.getByRole("combobox", { name: "Assigned to", exact: true })
+      .selectOption("20000000-0000-4000-8000-000000000003");
     await page.getByLabel("Task title").fill("General assigned task");
-    await page.getByLabel("Description", { exact: true }).fill(
-      "Prepare a separate export for the second member.",
+    await page.getByLabel("The brief").fill(
+      "A second export for another eligible member.",
     );
-    await page.getByRole("button", { name: "Save task" }).click();
+    await page.getByRole("textbox", { name: /Deliverables/ }).fill(
+      "Second final export",
+    );
+    await page.getByRole("button", { name: "Create task & propose terms" })
+      .click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    if (info.project.name === "chromium") {
-      mkdirSync("docs/screenshots", { recursive: true });
-      await page.screenshot({
-        path: "docs/screenshots/project-studio.png",
-        fullPage: true,
-        animations: "disabled",
-      });
-    }
     await page.reload();
     await page.getByRole("button", { name: "Project whiteboard", exact: true })
       .click();
     await expect(
-      page.locator(".hierarchy-card").filter({ hasText: "Member export task" }),
+      page.locator(".hierarchy-task").filter({ hasText: "Member export task" }),
     ).toHaveCount(1);
     await expect(
-      page.locator(".hierarchy-card").filter({
+      page.locator(".hierarchy-task").filter({
         hasText: "General assigned task",
       }),
     ).toHaveCount(1);
-    await page.getByLabel("Search people and projects").fill("Recruitment cut");
+    if ((page.viewportSize()?.width ?? 1440) < 760) {
+      await page.getByLabel(`Open role ${fixture.role}`, { exact: true })
+        .click();
+    } else {await page.locator(".hierarchy-role").getByRole("button", {
+        name: fixture.role,
+        exact: true,
+      }).click();}
+    await page.locator(".roster-member").filter({ hasText: fixture.name })
+      .click();
+    await member.getByRole("button", { name: "+ Add task", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(member).toBeVisible();
     if (info.project.name === "chromium") {
-      await page.getByLabel("Project hierarchy whiteboard").screenshot({
-        path: "docs/screenshots/project-whiteboard.png",
-        animations: "disabled",
+      await page.screenshot({
+        path: info.outputPath("merged-member-tasks.png"),
+        fullPage: true,
       });
     }
-    const memberCard = page.locator(".hierarchy-card").filter({
-      hasText: "vincent damaso da best",
-    });
-    await memberCard.getByRole("button").click();
-    await expect(
-      page.getByRole("button", { name: "General assigned task", exact: true }),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Add task", exact: true }).click();
-    await page.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(
-      page.getByRole("button", { name: "General assigned task", exact: true }),
-    ).toBeVisible();
-    await closePanels(page);
     expect(errors).toEqual([]);
   },
 );
@@ -251,5 +257,5 @@ test("workspace AI remains available to freelancers and cannot expose peer work"
   ).toHaveCount(0);
   await expect(
     page.locator(".hierarchy-card").filter({ hasText: "Recruitment cut" }),
-  ).toHaveCount(2);
+  ).toHaveCount(1);
 });

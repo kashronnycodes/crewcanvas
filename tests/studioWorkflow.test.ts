@@ -66,7 +66,9 @@ describe("task grouping and creation", () => {
     own.parentProjectId = s.projects[0].id;
     s.projects = [own];
     s.people = s.people.filter((p) => p.id === own.workerId);
-    const [group] = studioProjects(s);
+    const group = studioProjects(s).find((p) =>
+      p.tasks.some((t) => t.id === own.id)
+    )!;
     expect(group.title).toBe("Assigned project");
     expect(group.roles.flatMap((r) => r.members).map((m) => m.person.id))
       .toEqual([own.workerId]);
@@ -261,7 +263,9 @@ describe("payment responsibilities", () => {
     p.agreements[0].status = "proposed";
     p.activeAgreementId = null;
     expect(taskPayment(p).next).toMatch(/^Freelancer/);
-    const revision = seedWorkspace().projects.find((p) => p.workerId === IDS.ethan)!;
+    const revision = seedWorkspace().projects.find((p) =>
+      p.workerId === IDS.ethan
+    )!;
     expect(taskPayment(revision).next).toMatch(/^Employer/);
   });
 });

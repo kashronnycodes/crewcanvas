@@ -1,0 +1,37 @@
+
+> crewcanvas@1.0.0 build
+> tsc -b && vite build
+
+vite v7.3.7 building client environment for production...
+transforming...
+../crewcanvas/node_modules/zod/v4/core/util.js (400:0): A comment
+
+"// Wrapped in a `@__PURE__` IIFE: esbuild never tree-shakes a top-level initializer that contains a member access on `Number`, so the bare object literal survived into every bundle."
+
+in "../crewcanvas/node_modules/zod/v4/core/util.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+../crewcanvas/node_modules/zod/v4/core/regexes.js (74:0): A comment
+
+"/** Anchors a pattern source. The interpolation lives here rather than at the call site because
+ * esbuild will not drop a `@__PURE__` call whose own argument interpolates a variable, but it
+ * will drop `anchor(dateSource)`. Keeping it inline pinned `date` into every bundle. */"
+
+in "../crewcanvas/node_modules/zod/v4/core/regexes.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+✓ 2160 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                               0.63 kB │ gzip:   0.41 kB
+dist/assets/jetbrains-mono-latin-400-normal-V6pRDFza.woff2   21.17 kB
+dist/assets/inter-latin-400-normal-C38fXH4l.woff2            23.66 kB
+dist/assets/inter-latin-500-normal-Cerq10X2.woff2            24.27 kB
+dist/assets/inter-latin-600-normal-LgqL8muc.woff2            24.45 kB
+dist/assets/jetbrains-mono-latin-400-normal-6-qcROiO.woff    27.50 kB
+dist/assets/inter-latin-400-normal-CyCys3Eg.woff             30.70 kB
+dist/assets/inter-latin-600-normal-CiBQ2DWP.woff             31.26 kB
+dist/assets/inter-latin-500-normal-BL9OpVg8.woff             31.28 kB
+dist/assets/index-CY3x_LDe.css                              133.55 kB │ gzip:  26.04 kB
+dist/assets/WorkflowCanvas-CK0cuU-k.js                        9.71 kB │ gzip:   3.46 kB
+dist/assets/ProjectBoard-DAYR0O4G.js                         31.09 kB │ gzip:  10.39 kB
+dist/assets/Canvas-BkvgQhO7.js                               38.07 kB │ gzip:  12.66 kB
+dist/assets/index-CJnqR8qu.js                               176.76 kB │ gzip:  57.91 kB
+dist/assets/index-BY3jpX81.js                               507.37 kB │ gzip: 157.72 kB
+✓ built in 11.46s

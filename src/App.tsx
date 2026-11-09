@@ -91,10 +91,13 @@ function WorkspaceApp(
     getDemoActor() ?? IDS.myron as string
   );
   const [theme, toggleTheme] = useTheme();
-  const [view, setView] = useState<"list" | "board" | "revisions">("list");
+  const [view, setView] = useState<"studio" | "list" | "board" | "revisions">(
+    "studio",
+  );
   const [search, setSearch] = useState("");
   const [newProject, setNewProject] = useState(false);
   const [invite, setInvite] = useState(false);
+  const [invitationRole, setInvitationRole] = useState<string | undefined>();
   const [help, setHelp] = useState(false);
   const [inbox, setInbox] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
@@ -409,6 +412,13 @@ function WorkspaceApp(
               <Clapperboard size={20} />
               {pendingReview > 0 && <i />}
             </button>
+            <button
+              title="Revisions"
+              aria-label="Revisions page"
+              onClick={() => setView("revisions")}
+            >
+              <RotateCcw size={20} />
+            </button>
           </div>
           <div className="sidebar-bottom">
             <button
@@ -430,7 +440,11 @@ function WorkspaceApp(
             </div>
           </div>
         </aside>
-        <main className="main-workspace">
+        <main
+          className={`main-workspace ${
+            view === "studio" || view === "board" ? "studio-active" : ""
+          }`}
+        >
           <div className="workspace-toolbar">
             <div className="page-heading">
               <div className="breadcrumb">
@@ -540,10 +554,15 @@ function WorkspaceApp(
           </div>
           <div className="canvas-nav">
             <div className="view-toggle" aria-label="Workspace view">
-              {([["list", "Project studio"], ["board", "Project whiteboard"], [
-                "revisions",
-                "Revisions",
-              ]] as const).map(([id, label]) => (
+              {([
+                ["studio", "Project studio"],
+                ["board", "Project whiteboard"],
+                ["list", "Task list"],
+                [
+                  "revisions",
+                  "Revisions",
+                ],
+              ] as const).map(([id, label]) => (
                 <button
                   key={id}
                   aria-pressed={view === id}
@@ -576,11 +595,16 @@ function WorkspaceApp(
             }
           >
             <StudioWorkspace
+              key={`${snapshot.id}:${snapshot.actorId}`}
               snapshot={snapshot}
               view={view}
               search={search}
               onCommand={command}
               onSaveLayout={saveLayout}
+              onInvite={(role) => {
+                setInvitationRole(role);
+                setInvite(true);
+              }}
               onIssue={(id) =>
                 run(
                   () => payments.issue(id, uid()),
@@ -614,7 +638,14 @@ function WorkspaceApp(
         />
       )}
       {invite && (
-        <Invitation onClose={() => setInvite(false)} onNotify={notify} />
+        <Invitation
+          initialRole={invitationRole}
+          onClose={() => {
+            setInvite(false);
+            setInvitationRole(undefined);
+          }}
+          onNotify={notify}
+        />
       )}
       {inbox && (
         <Modal
@@ -810,20 +841,22 @@ function ShieldIcon() {
 function Invitation({
   onClose,
   onNotify,
+  initialRole,
 }: {
   onClose: () => void;
   onNotify: (s: string) => void;
+  initialRole?: string;
 }) {
   const client = useQueryClient();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState("Video Editor");
+  const [role, setRole] = useState(initialRole ?? "Video Editor");
   const [result, setResult] = useState("");
   const [busy, setBusy] = useState(false);
   return (
     <Modal
       title="Good people make great work"
-      description="Invite a worker to Northstar Creative. Invitations never grant employer access."
+      description="Invite a freelancer to this workspace. Invitations never grant employer access."
       onClose={onClose}
     >
       <form
@@ -869,6 +902,12 @@ function Invitation({
             maxLength={80}
           />
         </label>
+        {initialRole && (
+          <p className="fine-print">
+            Once they accept, use “+ Add member” in the {initialRole}{" "}
+            roster to place them in this project.
+          </p>
+        )}
         <button className="button primary" disabled={busy}>
           <UserPlus size={16} />
           {mode === "demo" ? "Simulate invitation" : "Generate invitation link"}

@@ -86,6 +86,10 @@ export interface Revision {
   agreementId: string;
   createdAt: string;
   roundConsumed: boolean;
+  requestedBy?: string;
+  deliveryId?: string;
+  dueDate?: string | null;
+  requestedFeeMinor?: string | null;
   items: (ScopeItem & {
     id: string;
     disposition:
@@ -153,6 +157,12 @@ export interface Project {
   invoices: Invoice[];
   activity: Activity[];
   version: number;
+  organization?: { collectionId: string; roleId: string };
+}
+export interface WorkflowCollection {
+  id: string;
+  title: string;
+  roles: { id: string; name: string; members: string[] }[];
 }
 export interface LayoutGroup {
   id: string;
@@ -171,6 +181,7 @@ export interface LayoutPerson {
 }
 export interface CanvasLayout {
   schemaVersion: 1;
+  workflow?: WorkflowCollection[];
   version: number;
   groups: LayoutGroup[];
   people: LayoutPerson[];

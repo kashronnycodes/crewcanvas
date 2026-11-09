@@ -3,10 +3,10 @@ import type {
   CanvasLayout,
   Invoice,
   Project,
-  SessionActor,
   ScopeItem,
+  SessionActor,
 } from "./types.ts";
-import { commandSchema, type Command } from "./validation.ts";
+import { type Command, commandSchema } from "./validation.ts";
 export class DomainError extends Error {
   constructor(
     public code: "FORBIDDEN" | "CONFLICT" | "VALIDATION" | "NOT_FOUND",
@@ -23,16 +23,19 @@ export const money = (minor: string) =>
     maximumFractionDigits: 2,
   }).format(Number(BigInt(minor)) / 100);
 export function parseAmount(input: string): string {
-  if (!/^\d{1,6}(\.\d{1,2})?$/.test(input.trim()))
+  if (!/^\d{1,6}(\.\d{1,2})?$/.test(input.trim())) {
     throw new DomainError(
       "VALIDATION",
       "Enter a USD amount with at most two decimal places.",
     );
+  }
   const [dollars, cents = ""] = input.trim().split(".");
   return (BigInt(dollars) * 100n + BigInt(cents.padEnd(2, "0"))).toString();
 }
 export const paypalAmount = (minor: string) =>
-  `${BigInt(minor) / 100n}.${(BigInt(minor) % 100n).toString().padStart(2, "0")}`;
+  `${BigInt(minor) / 100n}.${
+    (BigInt(minor) % 100n).toString().padStart(2, "0")
+  }`;
 export const activeAgreement = (project: Project) =>
   project.agreements.find((a) => a.id === project.activeAgreementId);
 export const todayIn = (timezone = "Asia/Manila", now = new Date()) =>
@@ -48,11 +51,11 @@ export function invoiceAttention(invoice: Invoice, today: string): boolean {
     invoice.state === "refunded" ||
     invoice.state === "paid" ||
     invoice.state === "unknown"
-  )
+  ) {
     return false;
+  }
   if (invoice.error || invoice.state === "failed") return true;
-  const collectible =
-    BigInt(invoice.amountMinor) -
+  const collectible = BigInt(invoice.amountMinor) -
     BigInt(invoice.paidMinor) -
     BigInt(invoice.pendingMinor);
   return (
@@ -93,25 +96,28 @@ export function reparent(
   return next;
 }
 export function verifySources(items: ScopeItem[], agreement: Agreement) {
-  for (const item of items)
+  for (const item of items) {
     for (const source of item.sources) {
       const clause = agreement.clauses.find((c) => c.id === source.clauseId);
-      if (!source.quote || !clause?.text.includes(source.quote))
+      if (!source.quote || !clause?.text.includes(source.quote)) {
         throw new DomainError(
           "VALIDATION",
           "An AI source does not match the accepted agreement. Try again or use manual review.",
         );
+      }
     }
+  }
 }
 export function assertProjectAccess(actor: SessionActor, project: Project) {
   if (
     actor.workspaceId !== project.workspaceId ||
     (actor.role === "worker" && actor.id !== project.workerId)
-  )
+  ) {
     throw new DomainError(
       "FORBIDDEN",
       "You do not have access to this project.",
     );
+  }
 }
 export function execute(
   project: Project,
@@ -121,33 +127,38 @@ export function execute(
 ): Project {
   const command = commandSchema.parse(input);
   assertProjectAccess(actor, project);
-  if (command.type === "createProject")
+  if (command.type === "createProject") {
     throw new DomainError("VALIDATION", "Use the create project operation.");
-  if (command.projectId !== project.id)
+  }
+  if (command.projectId !== project.id) {
     throw new DomainError("FORBIDDEN", "Project identifier mismatch.");
+  }
   const p = structuredClone(project);
   const now = options.now ?? new Date().toISOString();
   const employer = () => {
-    if (actor.role !== "employer")
+    if (actor.role !== "employer") {
       throw new DomainError(
         "FORBIDDEN",
         "Only the employer can perform this action.",
       );
+    }
   };
   const worker = () => {
-    if (actor.role !== "worker" || actor.id !== p.workerId)
+    if (actor.role !== "worker" || actor.id !== p.workerId) {
       throw new DomainError(
         "FORBIDDEN",
         "Only the assigned worker can perform this action.",
       );
+    }
   };
   const agreed = () => {
     const a = activeAgreement(p);
-    if (!a)
+    if (!a) {
       throw new DomainError(
         "CONFLICT",
         "The agreement must be accepted first.",
       );
+    }
     return a;
   };
   const log = (text: string) =>
@@ -158,19 +169,21 @@ export function execute(
       if (
         p.agreements.some((a) => a.status === "proposed") ||
         p.proposals.some((a) => a.status === "pending")
-      )
+      ) {
         throw new DomainError(
           "CONFLICT",
           "Resolve the outstanding terms proposal first.",
         );
+      }
       if (
         p.invoices.length &&
         command.terms.amountMinor !== agreed().amountMinor
-      )
+      ) {
         throw new DomainError(
           "CONFLICT",
           "Use an addition for new charges after invoicing.",
         );
+      }
       p.agreements.push(
         makeAgreement(command.terms, actor.id, p.activeAgreementId, now),
       );
@@ -182,16 +195,18 @@ export function execute(
       const a = p.agreements.find((x) => x.id === command.agreementId);
       if (!a) throw new DomainError("NOT_FOUND", "Agreement not found.");
       if (a.status === "accepted" && command.accept) return project;
-      if (a.status !== "proposed")
+      if (a.status !== "proposed") {
         throw new DomainError(
           "CONFLICT",
           "This agreement is no longer awaiting a decision.",
         );
-      if (a.baseId !== p.activeAgreementId)
+      }
+      if (a.baseId !== p.activeAgreementId) {
         throw new DomainError(
           "CONFLICT",
           "Terms changed. Ask for an updated proposal.",
         );
+      }
       a.status = command.accept ? "accepted" : "declined";
       if (command.accept) {
         a.acceptedAt = now;
@@ -210,39 +225,46 @@ export function execute(
     case "submitDelivery": {
       worker();
       const a = agreed();
-      if (p.deliveries.some((d) => d.label === command.label))
+      if (p.deliveries.some((d) => d.label === command.label)) {
         throw new DomainError(
           "CONFLICT",
           "Use a unique delivery version label.",
         );
+      }
       if (
         p.revisions.some((r) =>
           r.items.some(
             (i) =>
               i.disposition === "awaiting_response" ||
               i.disposition === "clarification",
-          ),
+          )
         ) ||
         p.proposals.some((x) => x.status === "pending")
-      )
+      ) {
         throw new DomainError(
           "CONFLICT",
           "Resolve outstanding revision decisions before submitting.",
         );
+      }
       p.deliveries.push({
         id: uid(),
         agreementId: a.id,
         url: command.type === "submitDelivery" ? command.url : "",
-        ...(command.type === "submitFileDelivery" ? { fileId: command.fileId, fileVersion: command.fileVersion } : {}),
+        ...(command.type === "submitFileDelivery"
+          ? { fileId: command.fileId, fileVersion: command.fileVersion }
+          : {}),
         label: command.label,
         note: command.note,
         submittedAt: now,
         status: "submitted",
       });
-      for (const r of p.revisions)
-        for (const item of r.items)
-          if (["included", "extra_proposed"].includes(item.disposition))
+      for (const r of p.revisions) {
+        for (const item of r.items) {
+          if (["included", "extra_proposed"].includes(item.disposition)) {
             item.disposition = "resolved";
+          }
+        }
+      }
       p.state = "submitted";
       log(`Submitted ${command.label} for review.`);
       break;
@@ -257,19 +279,21 @@ export function execute(
         d.status !== "submitted" ||
         d.agreementId !== p.activeAgreementId ||
         p.state !== "submitted"
-      )
+      ) {
         throw new DomainError(
           "CONFLICT",
           "Accept the latest submitted delivery under the current agreement.",
         );
+      }
       if (
         p.proposals.some((x) => x.status === "pending") ||
         p.agreements.some((a) => a.status === "proposed")
-      )
+      ) {
         throw new DomainError(
           "CONFLICT",
           "Resolve pending scope changes first.",
         );
+      }
       d.status = "accepted";
       d.acceptedAt = now;
       p.state = "accepted";
@@ -279,24 +303,57 @@ export function execute(
     case "requestRevision": {
       employer();
       const a = agreed();
-      if (p.state !== "submitted")
+      if (
+        !["submitted", "changes_requested"].includes(p.state) ||
+        !p.deliveries.length
+      ) {
         throw new DomainError(
           "CONFLICT",
           "Request revisions on a submitted delivery.",
         );
+      }
       verifySources(command.items, a);
+      const delivery = command.deliveryId
+        ? p.deliveries.find((d) => d.id === command.deliveryId)
+        : p.deliveries.at(-1);
+      if (!delivery || delivery.id !== p.deliveries.at(-1)!.id) {
+        throw new DomainError(
+          "CONFLICT",
+          "Review the current submitted version.",
+        );
+      }
       p.revisions.push({
         id: uid(),
         text: command.text,
         agreementId: a.id,
         createdAt: now,
         roundConsumed: false,
+        requestedBy: actor.id,
+        deliveryId: delivery.id,
+        dueDate: command.dueDate ?? null,
+        requestedFeeMinor: command.requestedFeeMinor ?? null,
         items: command.items.map((i) => ({
           ...i,
           id: uid(),
           disposition: "awaiting_response",
         })),
       });
+      if (command.requestedFeeMinor != null) {
+        const revision = p.revisions.at(-1)!, item = revision.items[0];
+        item.disposition = "extra_proposed";
+        p.proposals.push({
+          id: uid(),
+          revisionId: revision.id,
+          itemId: item.id,
+          baseAgreementId: a.id,
+          description: command.text,
+          amountMinor: command.requestedFeeMinor,
+          deadline: command.dueDate ?? null,
+          status: "pending",
+          createdAt: now,
+          authorId: actor.id,
+        });
+      }
       p.deliveries.at(-1)!.status = "changes_requested";
       p.state = "changes_requested";
       log("Requested changes. No fee has been created.");
@@ -310,22 +367,24 @@ export function execute(
         !r ||
         !i ||
         !["awaiting_response", "clarification"].includes(i.disposition)
-      )
+      ) {
         throw new DomainError(
           "CONFLICT",
           "This revision item has already been handled.",
         );
+      }
       if (
         command.disposition === "included" &&
         !r.roundConsumed &&
         !command.waiveRound
       ) {
         const used = p.revisions.filter((x) => x.roundConsumed).length;
-        if (used >= agreed().revisionRounds)
+        if (used >= agreed().revisionRounds) {
           throw new DomainError(
             "CONFLICT",
             "No included rounds remain. Explicitly waive the round or discuss additional work.",
           );
+        }
         r.roundConsumed = true;
       }
       i.disposition = command.disposition;
@@ -346,16 +405,18 @@ export function execute(
         !r ||
         !i ||
         !["awaiting_response", "clarification"].includes(i.disposition)
-      )
+      ) {
         throw new DomainError(
           "CONFLICT",
           "This revision item has already been handled.",
         );
-      if (p.agreements.some((a) => a.status === "proposed"))
+      }
+      if (p.agreements.some((a) => a.status === "proposed")) {
         throw new DomainError(
           "CONFLICT",
           "Resolve the proposed agreement first.",
         );
+      }
       p.proposals.push({
         id: uid(),
         revisionId: r.id,
@@ -370,20 +431,66 @@ export function execute(
       });
       i.disposition = "extra_proposed";
       log(
-        `Proposed additional work for ${money(command.amountMinor)}. Total unchanged pending approval.`,
+        `Proposed additional work for ${
+          money(command.amountMinor)
+        }. Total unchanged pending approval.`,
+      );
+      break;
+    }
+    case "counterProposal": {
+      const prior = p.proposals.find((x) => x.id === command.proposalId);
+      if (!prior || prior.status !== "pending") {
+        throw new DomainError(
+          "CONFLICT",
+          "This proposal is no longer pending.",
+        );
+      }
+      if ((actor.role === "worker") === (prior.authorId === p.workerId)) {
+        throw new DomainError(
+          "FORBIDDEN",
+          "Wait for the other party's response.",
+        );
+      }
+      if (
+        prior.baseAgreementId !== agreed().id ||
+        p.agreements.some((a) => a.status === "proposed")
+      ) {
+        throw new DomainError(
+          "CONFLICT",
+          "Resolve changed terms and rebase the proposal first.",
+        );
+      }
+      prior.status = "superseded";
+      prior.decidedAt = now;
+      p.proposals.push({
+        ...prior,
+        id: uid(),
+        authorId: actor.id,
+        previousProposalId: prior.id,
+        note: command.note,
+        amountMinor: command.amountMinor,
+        deadline: command.deadline === undefined
+          ? prior.deadline
+          : command.deadline,
+        baseAgreementId: agreed().id,
+        status: "pending",
+        createdAt: now,
+        decidedAt: undefined,
+      });
+      log(
+        `Counteroffered ${money(command.amountMinor)}. No fee is agreed yet.`,
       );
       break;
     }
     case "decideProposal": {
       const proposal = p.proposals.find((x) => x.id === command.proposalId);
       if (!proposal) throw new DomainError("NOT_FOUND", "Proposal not found.");
-      if (proposal.authorId === actor.id) {
+      if ((actor.role === "worker") === (proposal.authorId === p.workerId)) {
         throw new DomainError(
           "FORBIDDEN",
-          "Only the other party can respond to this proposal.",
+          "Only the other party may decide this proposal.",
         );
       }
-      if (actor.role === "worker") worker();
       if (proposal.status === "accepted" && command.accept) return project;
       if (proposal.status !== "pending") {
         throw new DomainError("CONFLICT", "Proposal already decided.");
@@ -432,63 +539,19 @@ export function execute(
       );
       break;
     }
-    case "counterProposal": {
-      if (actor.role === "worker") worker();
-      const old = p.proposals.find((x) => x.id === command.proposalId);
-      if (!old || old.status !== "pending") {
-        throw new DomainError(
-          "CONFLICT",
-          "This proposal is no longer pending.",
-        );
-      }
-      if (old.authorId === actor.id) {
-        throw new DomainError(
-          "FORBIDDEN",
-          "Wait for the other party to respond.",
-        );
-      }
-      if (
-        old.baseAgreementId !== agreed().id ||
-        p.agreements.some((a) => a.status === "proposed")
-      ) {
-        throw new DomainError(
-          "CONFLICT",
-          "Resolve changed terms and rebase the proposal first.",
-        );
-      }
-      old.status = "superseded";
-      old.decidedAt = now;
-      p.proposals.push({
-        ...old,
-        id: uid(),
-        previousProposalId: old.id,
-        amountMinor: command.amountMinor,
-        note: command.note,
-        authorId: actor.id,
-        status: "pending",
-        createdAt: now,
-        decidedAt: undefined,
-      });
-      log(
-        `Counteroffered ${
-          money(command.amountMinor)
-        }. Total unchanged pending the other party's acceptance.`,
-      );
-      break;
-    }
     case "rebaseProposal": {
       if (actor.role === "worker") worker();
       const old = p.proposals.find((x) => x.id === command.proposalId);
-      if (old && old.authorId !== actor.id) {
-        throw new DomainError(
-          "FORBIDDEN",
-          "Only the proposal author can rebase it.",
-        );
-      }
       if (!old || old.status !== "pending") {
         throw new DomainError(
           "CONFLICT",
           "This proposal is no longer pending.",
+        );
+      }
+      if (old.authorId !== actor.id) {
+        throw new DomainError(
+          "FORBIDDEN",
+          "Only the author may rebase an offer. Send a counteroffer instead.",
         );
       }
       if (old.baseAgreementId === agreed().id) return project;
@@ -503,7 +566,7 @@ export function execute(
         decidedAt: undefined,
       });
       log(
-        "Proposal author rebased the additional work on the latest accepted terms. Price still requires the other party's acceptance.",
+        "Worker rebased an additional-work proposal on the latest accepted terms. Price still requires employer approval.",
       );
       break;
     }
@@ -513,26 +576,29 @@ export function execute(
     }
     case "simulateInvoice": {
       worker();
-      if (!options.demo)
+      if (!options.demo) {
         throw new DomainError(
           "FORBIDDEN",
           "Simulated invoices are available only in demo mode.",
         );
+      }
       const a = agreed();
-      if (p.state !== "accepted")
+      if (p.state !== "accepted") {
         throw new DomainError(
           "CONFLICT",
           "Accept the delivery before invoicing.",
         );
+      }
       const invoiced = p.invoices
         .filter((i) => i.state !== "cancelled")
         .reduce((sum, i) => sum + BigInt(i.amountMinor), 0n);
       const remaining = BigInt(a.amountMinor) - invoiced;
-      if (remaining <= 0n)
+      if (remaining <= 0n) {
         throw new DomainError(
           "CONFLICT",
           "All approved charges are already invoiced.",
         );
+      }
       const due = new Date(
         p.deliveries.filter((d) => d.status === "accepted").at(-1)
           ?.acceptedAt ?? now,
@@ -558,24 +624,23 @@ export function execute(
       break;
     }
     case "simulatePayment": {
-      if (!options.demo)
+      if (!options.demo) {
         throw new DomainError(
           "FORBIDDEN",
           "Simulated payments are available only in demo mode.",
         );
+      }
       const i = p.invoices.find((x) => x.id === command.invoiceId);
       if (!i) throw new DomainError("NOT_FOUND", "Invoice not found.");
       i.state = command.state;
-      i.pendingMinor =
-        command.state === "pending"
-          ? (BigInt(i.amountMinor) - BigInt(i.paidMinor)).toString()
-          : "0";
-      i.paidMinor =
-        command.state === "paid"
-          ? i.amountMinor
-          : command.state === "partial"
-            ? (BigInt(i.amountMinor) / 2n).toString()
-            : i.paidMinor;
+      i.pendingMinor = command.state === "pending"
+        ? (BigInt(i.amountMinor) - BigInt(i.paidMinor)).toString()
+        : "0";
+      i.paidMinor = command.state === "paid"
+        ? i.amountMinor
+        : command.state === "partial"
+        ? (BigInt(i.amountMinor) / 2n).toString()
+        : i.paidMinor;
       i.syncedAt = now;
       log(
         `Simulated payment state: ${command.state}. No real payment occurred.`,
@@ -587,16 +652,18 @@ export function execute(
   return p;
 }
 export function makeAgreement(
-  terms: Pick<
-    Agreement,
-    | "brief"
-    | "deliverables"
-    | "amountMinor"
-    | "currency"
-    | "deadline"
-    | "revisionRounds"
-    | "paymentDays"
-  > & { tasks?: string[] },
+  terms:
+    & Pick<
+      Agreement,
+      | "brief"
+      | "deliverables"
+      | "amountMinor"
+      | "currency"
+      | "deadline"
+      | "revisionRounds"
+      | "paymentDays"
+    >
+    & { tasks?: string[] },
   actorId: string,
   baseId: string | null,
   now = new Date().toISOString(),
@@ -610,11 +677,13 @@ export function makeAgreement(
     ...(terms.tasks ?? []).map((text, i) => ({ id: `task-${i + 1}`, text })),
     {
       id: "revisions",
-      text: `${terms.revisionRounds} consolidated revision rounds included. Additional work requires mutual approval. No automatic fees.`,
+      text:
+        `${terms.revisionRounds} consolidated revision rounds included. Additional work requires mutual approval. No automatic fees.`,
     },
     {
       id: "payment",
-      text: `Payment due ${terms.paymentDays} calendar days after delivery acceptance.`,
+      text:
+        `Payment due ${terms.paymentDays} calendar days after delivery acceptance.`,
     },
   ];
   return {

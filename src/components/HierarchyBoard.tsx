@@ -18,7 +18,7 @@ type Card = Node<
 >;
 function HierarchyCard({ data }: NodeProps<Card>) {
   return (
-    <div className="hierarchy-card">
+    <div className="task-hierarchy-card">
       <Handle type="target" position={Position.Left} isConnectable={false} />
       <button onClick={data.open}>
         <small>{data.label}</small>

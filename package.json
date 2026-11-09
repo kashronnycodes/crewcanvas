@@ -24,7 +24,8 @@
     "check:server": "deno check --config supabase/functions/deno.json supabase/functions/crew-api/index.ts supabase/functions/paypal-webhook/index.ts supabase/functions/reconcile/index.ts",
     "provision:demo": "node --experimental-transform-types scripts/provision-demo.mjs",
     "test:e2e": "playwright test",
-    "test:e2e:integrated": "playwright test --config playwright.integrated.config.ts"
+    "test:e2e:integrated": "playwright test --config playwright.integrated.config.ts",
+    "test:rate-limits:db": "node scripts/verify-rate-limits.mjs --docker"
   },
   "dependencies": {
     "@fontsource/inter": "5.3.0",

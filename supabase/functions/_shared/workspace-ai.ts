@@ -6,6 +6,7 @@ import { aiFailure } from "../../../shared/ai-errors.ts";
 import { money, parseAmount, todayIn } from "../../../shared/domain.ts";
 import { admin, HttpError, providerStore, snapshot } from "./backend.ts";
 import { aiConfig, generateStructured } from "./ai-provider.ts";
+import { enforceAiLimit } from "./rate-limit.ts";
 const intentSchema = z.object({
   intent: z.enum([
     "summary",
@@ -23,13 +24,7 @@ export async function workspaceCommand(
 ): Promise<WorkspaceAnswer> {
   const { text } = z.object({ text: z.string().trim().min(3).max(2000) })
     .strict().parse(input);
-  if (!await providerStore("ai_allow", { actorId: user.id })) {
-    throw new HttpError(
-      429,
-      "RATE_LIMIT",
-      "Wait a minute before asking again.",
-    );
-  }
+  await enforceAiLimit(user.id);
   const s = await snapshot(user);
   const { model } = aiConfig();
   let intent: z.infer<typeof intentSchema>["intent"];
@@ -46,7 +41,7 @@ export async function workspaceCommand(
     intent = intentSchema.parse(result).intent;
   } catch (error) {
     const failure = aiFailure(error);
-    throw new HttpError(failure.status, failure.code, failure.message);
+    throw new HttpError(failure.status, failure.code, failure.message, failure.retryAfter);
   }
   const financial = {
     ...s,
@@ -83,7 +78,7 @@ export async function workspaceCommand(
       answer.highlight = result.projectIds.map((id) => `task:${id}`);
     } catch (error) {
       const failure = aiFailure(error);
-      throw new HttpError(failure.status, failure.code, failure.message);
+      throw new HttpError(failure.status, failure.code, failure.message, failure.retryAfter);
     }
   }
   if (intent === "spending") {

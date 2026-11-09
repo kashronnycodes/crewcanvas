@@ -278,3 +278,7 @@ model call, or a completed PayPal sandbox payment.
 # Public demo accounts
 
 The sign-in page offers three one-click simulated demo accounts. See [setup, isolation and deployment instructions](docs/public-demo-accounts.md) and [verification results](docs/public-demo-verification.md).
+
+## API rate limiting
+
+See [rate-limit policies, migration and deployment instructions](docs/api-rate-limiting.md) and [verification results](docs/api-rate-limiting-verification.md).

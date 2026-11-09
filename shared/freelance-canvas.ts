@@ -41,7 +41,9 @@ export function revisionSummary(p: Project, revisionId: string) {
   const total = (items: typeof proposals) =>
     money(items.reduce((sum, a) => sum + BigInt(a.amountMinor), 0n).toString());
   if (pending.length) {
-    return `Revision fee: ${total(pending)} · Awaiting client approval${
+    return `Revision fee: ${total(pending)} · Awaiting ${
+      pending[0].authorId === p.workerId ? "client" : "freelancer"
+    } approval${
       accepted.length ? ` · ${total(accepted)} already approved` : ""
     }`;
   }

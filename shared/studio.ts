@@ -1,3 +1,4 @@
+import { collectionTasks, workflowCollections } from "./workflow.ts";
 import type {
   Invoice,
   Project,
@@ -15,42 +16,27 @@ export const taskLabels: Record<WorkState, string> = {
   accepted: "Approved",
 };
 export function studioProjects(s: WorkspaceSnapshot) {
-  const groups = new Map<
-    string,
-    { id: string; title: string; tasks: Project[] }
-  >();
-  for (const task of s.projects) {
-    const id = task.parentProjectId ?? task.id;
-    // The server-filtered snapshot is the only source. Never fetch an unauthorized parent.
-    const parent = s.projects.find((p) => p.id === id);
-    if (!groups.has(id)) {
-      groups.set(id, {
-        id,
-        title: parent?.title ?? "Assigned project",
-        tasks: [],
-      });
-    }
-    groups.get(id)!.tasks.push(task);
-  }
-  return [...groups.values()].map((project) => ({
-    ...project,
-    roles: [
-      ...new Set(
-        project.tasks.map((t) =>
-          s.people.find((p) => p.id === t.workerId)?.role ?? "Member"
-        ),
-      ),
-    ]
-      .map((name) => ({
-        name,
-        members: s.people.filter((p) =>
-          p.accessRole === "worker" && p.role === name &&
-          project.tasks.some((t) => t.workerId === p.id)
-        ).map((person) => ({
+  return workflowCollections(s).map((collection) => ({
+    id: collection.id,
+    title: collection.title,
+    tasks: collectionTasks(s, collection.id),
+    roles: collection.roles.map((role) => ({
+      id: role.id,
+      name: role.name,
+      members: role.members.map((id) =>
+        s.people.find((person) => person.id === id)
+      )
+        .filter((person): person is NonNullable<typeof person> => !!person)
+        .map((person) => ({
           person,
-          tasks: project.tasks.filter((t) => t.workerId === person.id),
+          tasks: collectionTasks(s, collection.id).filter((t) =>
+            t.workerId === person.id &&
+            (t.organization
+              ? t.organization.roleId === role.id
+              : person.role === role.name)
+          ),
         })),
-      })),
+    })),
   }));
 }
 export function payableInvoice(i: Invoice) {
@@ -105,7 +91,9 @@ export function taskPayment(p: Project) {
     : "Awaiting invoice";
   const proposal = p.proposals.find((item) => item.status === "pending");
   const workNext = proposal
-    ? `${proposal.authorId === p.workerId ? "Employer" : "Freelancer"} · accept or counter the revision price`
+    ? `${
+      proposal.authorId === p.workerId ? "Employer" : "Freelancer"
+    } · accept or counter the revision price`
     : p.state === "awaiting_agreement"
     ? p.agreements.some((a) => a.status === "proposed")
       ? "Freelancer · review proposed scope and price"

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   AlertCircle,
+  ArrowLeft,
   ArrowRight,
   CalendarDays,
   Check,
@@ -35,12 +36,13 @@ import {
   parseAmount,
   todayIn,
 } from "../../shared/domain";
-import { type Command, driveUrlSchema } from "../../shared/validation";
+import { type Command, deliverableUrlSchema } from "../../shared/validation";
 import { mode, scopeAssistant } from "../services";
 import Avatar from "./Avatar";
 import ProjectForm from "./ProjectForm";
 import { FilePicker, FilePreview } from "./WorkspaceFiles";
 import { openFile } from "../fileService";
+import DeliverablePreview from "./DeliverablePreview";
 import { payableInvoice, taskLabels } from "../../shared/studio";
 import PaymentOverview from "./PaymentOverview";
 const workLabels = taskLabels;
@@ -66,6 +68,7 @@ export default function ProjectDrawer({
   onRefresh,
   busy,
   onNotify,
+  studio = false,
 }: {
   person: Person;
   snapshot: WorkspaceSnapshot;
@@ -80,6 +83,7 @@ export default function ProjectDrawer({
   onRefresh: (id: string) => Promise<boolean>;
   busy: boolean;
   onNotify: (s: string) => void;
+  studio?: boolean;
 }) {
   const today = todayIn(snapshot.timezone);
   const allProjects = snapshot.projects.filter((p) => p.workerId === person.id);
@@ -97,6 +101,8 @@ export default function ProjectDrawer({
     initialFilter === "attention" ? "payments" : initialTab,
   );
   const [editTerms, setEditTerms] = useState(false);
+  const [composeRevision, setComposeRevision] = useState(false);
+  useEffect(() => setComposeRevision(false), [selectedId]);
   useEffect(() => {
     const panel = document.getElementById("project-tab-panel");
     if (panel) panel.scrollTop = 0;
@@ -119,8 +125,10 @@ export default function ProjectDrawer({
       >
         <Dialog.Portal>
           <Dialog.Content
-            className="worker-drawer"
-            aria-describedby={undefined}
+            className={`worker-drawer ${studio ? "reference-drawer" : ""} ${
+              composeRevision ? "is-composing-revision" : ""
+            }`}
+            aria-describedby="worker-description"
             onInteractOutside={(e) => {
               if (
                 (e.target as HTMLElement).closest(
@@ -132,9 +140,20 @@ export default function ProjectDrawer({
             }}
           >
             <div className="drawer-top">
-              <button className="text-button" onClick={onBack ?? onClose}>
-                ← Back to member tasks
-              </button>
+              {composeRevision
+                ? (
+                  <button
+                    className="text-button"
+                    onClick={() => setComposeRevision(false)}
+                  >
+                    <ArrowLeft size={15} /> Back to delivery & revisions
+                  </button>
+                )
+                : (
+                  <button className="text-button" onClick={onBack ?? onClose}>
+                    ← Back to member tasks
+                  </button>
+                )}
               <Dialog.Close
                 className="icon-button"
                 aria-label="Close worker details"
@@ -163,7 +182,7 @@ export default function ProjectDrawer({
             )}
             <div className="project-selector">
               <label htmlFor="project-select">
-                {onBack ? "TASK" : "PROJECT"}{" "}
+                {studio || onBack ? "TASK" : "PROJECT"}{" "}
                 <span>
                   {projects.length}{" "}
                   {initialFilter !== "all" ? "matching" : "assigned"}
@@ -389,6 +408,13 @@ export default function ProjectDrawer({
                           agreements={p.agreements}
                           activeId={p.activeAgreementId}
                         />
+                        {p.deliveries.at(-1) && (
+                          <DeliverablePreview
+                            snapshot={snapshot}
+                            project={p}
+                            delivery={p.deliveries.at(-1)!}
+                          />
+                        )}
                         <div className="tip-card">
                           <span>✦</span>
                           <p>
@@ -409,49 +435,14 @@ export default function ProjectDrawer({
                         employer={employer}
                         busy={busy}
                         onCommand={onCommand}
-                        onRevision={() => setTab("revisions")}
+                        onRevision={() => {
+                          setTab("revisions");
+                          setComposeRevision(true);
+                        }}
                       />
                     )}
                     {tab === "revisions" && (
                       <>
-                        <div className="section-heading">
-                          <h3>Latest deliverable</h3>
-                          <button
-                            className="text-button"
-                            onClick={() => setTab("deliverables")}
-                          >
-                            View all versions →
-                          </button>
-                        </div>
-                        {p.deliveries.at(-1)
-                          ? (
-                            <div className="pending-card">
-                              <strong>{p.deliveries.at(-1)!.label}</strong>
-                              <p>{p.deliveries.at(-1)!.note}</p>
-                              {p.deliveries.at(-1)!.fileId &&
-                                  snapshot.files?.find((file) =>
-                                    file.id === p.deliveries.at(-1)!.fileId
-                                  )
-                                ? (
-                                  <FilePreview
-                                    file={snapshot.files.find((file) =>
-                                      file.id === p.deliveries.at(-1)!.fileId
-                                    )!}
-                                    version={p.deliveries.at(-1)!.fileVersion}
-                                  />
-                                )
-                                : (
-                                  <a
-                                    href={p.deliveries.at(-1)!.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    Open deliverable preview ↗
-                                  </a>
-                                )}
-                            </div>
-                          )
-                          : <p>No deliverable submitted yet.</p>}
                         <PaymentOverview
                           project={p}
                           person={person}
@@ -459,20 +450,11 @@ export default function ProjectDrawer({
                           busy={busy}
                           onIssue={onIssue}
                         />
-                        {employer && p.state === "submitted" && (
-                          <button
-                            className="button primary"
-                            onClick={() =>
-                              document.querySelector<HTMLTextAreaElement>(
-                                ".revision-composer textarea",
-                              )?.focus()}
-                          >
-                            Add revision
-                          </button>
-                        )}
                         <Revisions
-                          project={p}
                           snapshot={snapshot}
+                          composing={composeRevision}
+                          onCompose={setComposeRevision}
+                          project={p}
                           employer={employer}
                           busy={busy}
                           onCommand={onCommand}
@@ -770,13 +752,21 @@ function Deliverables({
         <h3>From brief to finished</h3>
         <span className="muted">{p.deliveries.length} versions</span>
       </div>
+      <div className="task-review-brief">
+        <span className="eyebrow">TASK DETAILS</span>
+        <h4>{p.title}</h4>
+        <p>
+          {(agreement ?? p.agreements.at(-1))?.brief ??
+            "Agree the scope before submitting a delivery."}
+        </p>
+      </div>
       {[...p.deliveries].reverse().map((d, index) => (
         <div className="delivery-card" key={d.id}>
+          <DeliverablePreview snapshot={snapshot} project={p} delivery={d} />
           <div className="delivery-icon">
             <FileText size={22} />
           </div>
           <div className="delivery-info">
-            <strong>{d.label}</strong>
             <small>
               Agreement v
               {p.agreements.findIndex((a) =>
@@ -799,7 +789,7 @@ function Deliverables({
               )
               : (
                 <a href={d.url} target="_blank" rel="noopener noreferrer">
-                  Open Google Drive link
+                  Open original link
                   <ExternalLink size={12} />
                 </a>
               )}
@@ -871,7 +861,7 @@ function Deliverables({
           className="stacked-form"
           onSubmit={async (e) => {
             e.preventDefault();
-            const parsed = driveUrlSchema.safeParse(url);
+            const parsed = deliverableUrlSchema.safeParse(url);
             const file = attached.find((f) => f.id === fileId);
             if (source === "file" && !file) {
               setError("Choose an uploaded project file.");
@@ -938,7 +928,7 @@ function Deliverables({
             : (
               <>
                 <label>
-                  Google Drive or Docs link
+                  Google Drive or Docs link (or another HTTPS deliverable)
                   <input
                     type="url"
                     required
@@ -994,6 +984,8 @@ function Revisions({
   busy,
   onCommand,
   onNotify,
+  composing,
+  onCompose,
 }: {
   snapshot: WorkspaceSnapshot;
   project: Project;
@@ -1001,11 +993,10 @@ function Revisions({
   busy: boolean;
   onCommand: (c: Command) => Promise<boolean>;
   onNotify: (s: string) => void;
+  composing: boolean;
+  onCompose: (value: boolean) => void;
 }) {
   const [text, setText] = useState("");
-  const [counterId, setCounterId] = useState<string | null>(null);
-  const [counterAmount, setCounterAmount] = useState("");
-  const [counterNote, setCounterNote] = useState("");
   const [analysis, setAnalysis] = useState<ScopeAnalysis | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [clarifyItem, setClarifyItem] = useState<
@@ -1024,6 +1015,15 @@ function Revisions({
   >(null);
   const [amount, setAmount] = useState("30.00");
   const [deadline, setDeadline] = useState(activeAgreement(p)?.deadline ?? "");
+  const [dueDate, setDueDate] = useState("");
+  const [revisionKind, setRevisionKind] = useState("included");
+  const [requestedFee, setRequestedFee] = useState("25.00");
+  const [counterId, setCounterId] = useState<string | null>(null);
+  const [counterNote, setCounterNote] = useState("");
+  const actorId = snapshot.actorId;
+  useEffect(() => {
+    if (composing) document.getElementById("revision-feedback")?.focus();
+  }, [composing]);
   useEffect(() => {
     setText("");
     setAnalysis(null);
@@ -1032,17 +1032,42 @@ function Revisions({
   return (
     <>
       <div className="section-heading">
-        <h3>Keep the scope in focus</h3>
-        <MessageSquare size={17} />
+        <h3>{composing ? "Request revision" : "Delivery & revisions"}</h3>
+        {employer && !composing && (
+          <button
+            className="button secondary"
+            disabled={!["submitted", "changes_requested"].includes(p.state)}
+            onClick={() => onCompose(true)}
+          >
+            <Plus size={14} /> Add revision
+          </button>
+        )}
       </div>
+      {composing && (
+        <button
+          className="text-button revision-back"
+          onClick={() => onCompose(false)}
+        >
+          <ArrowLeft size={15} /> Back to delivery & revisions
+        </button>
+      )}
       <p className="muted">
         AI offers perspective. People decide what's included and what changes.
       </p>
-      {employer && p.state === "submitted" && (
+      {!composing && p.deliveries.at(-1) && (
+        <DeliverablePreview
+          snapshot={snapshot}
+          project={p}
+          delivery={p.deliveries.at(-1)!}
+        />
+      )}
+      {composing && employer &&
+        ["submitted", "changes_requested"].includes(p.state) && (
         <div className="revision-composer">
           <label>
             Your feedback
             <textarea
+              id="revision-feedback"
               rows={3}
               value={text}
               onChange={(e) => {
@@ -1053,6 +1078,44 @@ function Revisions({
               maxLength={10000}
             />
           </label>
+          <p className="fine-print">
+            Reviewing {p.deliveries.at(-1)?.label}
+            {p.deliveries.at(-1)?.fileId
+              ? ` · file v${(p.deliveries.at(-1)?.fileVersion ?? 0) + 1}`
+              : " · external delivery"}. Each request is a separate history
+            entry.
+          </p>
+          <div className="field-grid">
+            <label>
+              Optional revision due date<input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
+            </label>
+            <label>
+              Revision arrangement<select
+                value={revisionKind}
+                onChange={(e) => setRevisionKind(e.target.value)}
+              >
+                <option value="included">
+                  Included / free · freelancer confirms
+                </option>
+                <option value="paid">Propose a paid revision</option>
+              </select>
+            </label>
+          </div>
+          {revisionKind === "paid" && (
+            <label>
+              Proposed fee · USD<input
+                inputMode="decimal"
+                value={requestedFee}
+                onChange={(e) => setRequestedFee(e.target.value)}
+                required
+                pattern="[0-9]+(\.[0-9]{1,2})?"
+              />
+            </label>
+          )}
           <div className="button-row">
             <button
               className="button ai-button"
@@ -1124,7 +1187,9 @@ function Revisions({
               {analysis.questions.map((q, i) => <p key={i}>{q}</p>)}
               <button
                 className="button primary"
-                disabled={busy}
+                disabled={busy ||
+                  (revisionKind === "paid" &&
+                    !/^\d{1,6}(\.\d{1,2})?$/.test(requestedFee.trim()))}
                 onClick={async () => {
                   if (
                     await onCommand({
@@ -1132,10 +1197,17 @@ function Revisions({
                       projectId: p.id,
                       text,
                       items: analysis.items,
+                      deliveryId: p.deliveries.at(-1)?.id,
+                      dueDate: dueDate || null,
+                      requestedFeeMinor: revisionKind === "paid"
+                        ? parseAmount(requestedFee)
+                        : null,
                     })
                   ) {
                     setText("");
                     setAnalysis(null);
+                    setDueDate("");
+                    onCompose(false);
                   }
                 }}
               >
@@ -1146,350 +1218,386 @@ function Revisions({
           )}
         </div>
       )}
-      {[...p.revisions].reverse().map((r) => (
-        <div className="revision-record" key={r.id}>
-          <div className="section-heading">
-            <h4>Revision request</h4>
-            <small>{r.roundConsumed ? "1 round used" : "No round used"}</small>
-          </div>
-          {r.items.map((item) => (
-            <div className={`scope-item ${item.classification}`} key={item.id}>
-              <span className="classification">
-                {item.classification.replaceAll("_", " ")}
-              </span>
-              <strong>{item.text}</strong>
-              <p>{item.explanation}</p>
-              {item.sources.map((s, i) => (
-                <blockquote key={i}>
-                  “{s.quote}”<cite>Accepted agreement · {s.clauseId}</cite>
-                </blockquote>
-              ))}
-              <div className="item-disposition">
-                <span>{item.disposition.replaceAll("_", " ")}</span>
-                <small>Uncertainty: {item.uncertainty}</small>
-              </div>
-              {item.note && <p>{item.note}</p>}
-              {!employer &&
-                ["awaiting_response", "clarification"].includes(
-                  item.disposition,
-                ) && (
-                <div className="revision-actions">
-                  <button
-                    disabled={busy}
-                    className="button secondary"
-                    onClick={() =>
-                      void onCommand({
-                        type: "respondRevision",
-                        projectId: p.id,
-                        revisionId: r.id,
-                        itemId: item.id,
-                        disposition: "included",
-                        note: "",
-                        waiveRound: false,
-                      })}
-                  >
-                    Accept as included
-                  </button>
-                  <button
-                    disabled={busy}
-                    className="text-button"
-                    onClick={() =>
-                      void onCommand({
-                        type: "respondRevision",
-                        projectId: p.id,
-                        revisionId: r.id,
-                        itemId: item.id,
-                        disposition: "included",
-                        note: "Included round waived by worker.",
-                        waiveRound: true,
-                      })}
-                  >
-                    Include & waive round
-                  </button>
-                  <button
-                    className="text-button"
-                    onClick={() => {
-                      setClarifyItem({ revisionId: r.id, itemId: item.id });
-                      setClarification("");
-                    }}
-                  >
-                    Ask for clarification
-                  </button>
-                  <button
-                    className="text-button"
-                    onClick={() =>
-                      setProposalItem({
-                        revisionId: r.id,
-                        itemId: item.id,
-                        description: item.text,
-                      })}
-                  >
-                    Propose revision fee →
-                  </button>
-                </div>
-              )}
+      <section className="revision-history" hidden={composing}>
+        {[...p.revisions].reverse().map((r) => (
+          <div className="revision-record" key={r.id}>
+            <div className="section-heading">
+              <h4>Revision request</h4>
+              <small>
+                {r.roundConsumed ? "1 round used" : "No round used"}
+              </small>
             </div>
-          ))}
-        </div>
-      ))}
-      {clarifyItem && (
-        <form
-          className="pending-card stacked-form"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            if (
-              await onCommand({
-                type: "respondRevision",
-                projectId: p.id,
-                revisionId: clarifyItem.revisionId,
-                itemId: clarifyItem.itemId,
-                disposition: "clarification",
-                note: clarification,
-                waiveRound: false,
-              })
-            ) {
-              setClarifyItem(null);
-              setClarification("");
-            }
-          }}
-        >
-          <label>
-            What needs clarification?
-            <textarea
-              autoFocus
-              value={clarification}
-              onChange={(e) => setClarification(e.target.value)}
-              required
-              minLength={3}
-              maxLength={2000}
-            />
-          </label>
-          <div className="button-row">
-            <button className="button primary" disabled={busy}>
-              Ask for clarification
-            </button>
+            <p className="fine-print">
+              Requested by {snapshot.people.find((person) =>
+                person.id === r.requestedBy
+              )?.name ?? "Client"} · {new Date(r.createdAt).toLocaleString()} ·
+              {" "}
+              {p.deliveries.find((d) =>
+                d.id === r.deliveryId
+              )?.label ??
+                "Original submitted delivery"}
+              {r.dueDate ? ` · Due ${r.dueDate}` : ""}
+            </p>
+            {p.proposals.filter((proposal) => proposal.revisionId === r.id).map(
+              (proposal) => (
+                <p className="revision-fee-outcome" key={proposal.id}>
+                  {money(proposal.amountMinor)} USD ·{" "}
+                  {proposal.status.replaceAll("_", " ")}
+                  {proposal.status === "pending"
+                    ? ` · Awaiting ${
+                      proposal.authorId === p.workerId ? "client" : "freelancer"
+                    }`
+                    : ""}
+                </p>
+              ),
+            )}
+            {r.items.map((item) => (
+              <div
+                className={`scope-item ${item.classification}`}
+                key={item.id}
+              >
+                <span className="classification">
+                  {item.classification.replaceAll("_", " ")}
+                </span>
+                <strong>{item.text}</strong>
+                <p>{item.explanation}</p>
+                {item.sources.map((s, i) => (
+                  <blockquote key={i}>
+                    “{s.quote}”<cite>Accepted agreement · {s.clauseId}</cite>
+                  </blockquote>
+                ))}
+                <div className="item-disposition">
+                  <span>{item.disposition.replaceAll("_", " ")}</span>
+                  <small>Uncertainty: {item.uncertainty}</small>
+                </div>
+                {item.note && <p>{item.note}</p>}
+                {!employer &&
+                  ["awaiting_response", "clarification"].includes(
+                    item.disposition,
+                  ) && (
+                  <div className="revision-actions">
+                    <button
+                      disabled={busy}
+                      className="button secondary"
+                      onClick={() =>
+                        void onCommand({
+                          type: "respondRevision",
+                          projectId: p.id,
+                          revisionId: r.id,
+                          itemId: item.id,
+                          disposition: "included",
+                          note: "",
+                          waiveRound: false,
+                        })}
+                    >
+                      Accept as included
+                    </button>
+                    <button
+                      disabled={busy}
+                      className="text-button"
+                      onClick={() =>
+                        void onCommand({
+                          type: "respondRevision",
+                          projectId: p.id,
+                          revisionId: r.id,
+                          itemId: item.id,
+                          disposition: "included",
+                          note: "Included round waived by worker.",
+                          waiveRound: true,
+                        })}
+                    >
+                      Include & waive round
+                    </button>
+                    <button
+                      className="text-button"
+                      onClick={() => {
+                        setClarifyItem({ revisionId: r.id, itemId: item.id });
+                        setClarification("");
+                      }}
+                    >
+                      Ask for clarification
+                    </button>
+                    <button
+                      className="text-button"
+                      onClick={() =>
+                        setProposalItem({
+                          revisionId: r.id,
+                          itemId: item.id,
+                          description: item.text,
+                        })}
+                    >
+                      Propose revision fee →
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
+        {clarifyItem && (
+          <form
+            className="pending-card stacked-form"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (
+                await onCommand({
+                  type: "respondRevision",
+                  projectId: p.id,
+                  revisionId: clarifyItem.revisionId,
+                  itemId: clarifyItem.itemId,
+                  disposition: "clarification",
+                  note: clarification,
+                  waiveRound: false,
+                })
+              ) {
+                setClarifyItem(null);
+                setClarification("");
+              }
+            }}
+          >
+            <label>
+              What needs clarification?
+              <textarea
+                autoFocus
+                value={clarification}
+                onChange={(e) => setClarification(e.target.value)}
+                required
+                minLength={3}
+                maxLength={2000}
+              />
+            </label>
+            <div className="button-row">
+              <button className="button primary" disabled={busy}>
+                Ask for clarification
+              </button>
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => setClarifyItem(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+        {proposalItem && (
+          <form
+            className="pending-card stacked-form"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                const ok = await onCommand({
+                  type: "proposeAddition",
+                  projectId: p.id,
+                  revisionId: proposalItem.revisionId,
+                  itemId: proposalItem.itemId,
+                  description: proposalItem.description,
+                  amountMinor: parseAmount(amount),
+                  deadline: deadline || null,
+                });
+                if (ok) setProposalItem(null);
+              } catch (e) {
+                onNotify((e as Error).message);
+              }
+            }}
+          >
+            <h4>Propose additional work</h4>
+            <label>
+              What will you add?
+              <textarea
+                rows={2}
+                value={proposalItem.description}
+                onChange={(e) =>
+                  setProposalItem({
+                    ...proposalItem,
+                    description: e.target.value,
+                  })}
+                required
+              />
+            </label>
+            <div className="field-grid">
+              <label>
+                Additional price · USD
+                <input
+                  inputMode="decimal"
+                  required
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+              </label>
+              <label>
+                New deadline
+                <input
+                  type="date"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                />
+              </label>
+            </div>
             <button
               type="button"
-              className="button secondary"
-              onClick={() => setClarifyItem(null)}
+              className="text-button"
+              onClick={() => setAmount("0.00")}
             >
-              Cancel
+              Waive the charge ($0)
             </button>
+            <div className="button-row">
+              <button className="button primary" disabled={busy}>
+                Send proposal
+              </button>
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => setProposalItem(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+        {p.proposals.map((proposal) => (
+          <div className="pending-card" key={proposal.id}>
+            <div className="section-heading">
+              <span className="eyebrow">ADDITIONAL WORK</span>
+              <span className="pill">{proposal.status}</span>
+            </div>
+            <h4>{proposal.description}</h4>
+            <strong className="proposal-price">
+              + {money(proposal.amountMinor)}
+              {proposal.amountMinor === "0" && <small>· charge waived</small>}
+            </strong>
+            {proposal.deadline && <p>Proposed deadline: {proposal.deadline}</p>}
+            <p>
+              {proposal.status === "pending"
+                ? "The agreed total stays unchanged until approval."
+                : `Decision recorded ${
+                  new Date(proposal.decidedAt!).toLocaleDateString()
+                }.`}
+            </p>
+            {proposal.authorId === actorId &&
+              proposal.status === "pending" &&
+              proposal.baseAgreementId !== p.activeAgreementId && (
+              <button
+                className="button secondary"
+                disabled={busy}
+                onClick={() =>
+                  void onCommand({
+                    type: "rebaseProposal",
+                    projectId: p.id,
+                    proposalId: proposal.id,
+                  })}
+              >
+                Rebase on current terms
+              </button>
+            )}
+            {proposal.note && <p>{proposal.note}</p>}
+            {proposal.status === "pending" && (
+              <p className="fine-print">
+                Proposed by {snapshot.people.find((person) =>
+                  person.id === proposal.authorId
+                )?.name ?? (proposal.authorId === p.workerId
+                  ? "Freelancer"
+                  : "Employer")} · Awaiting{" "}
+                {proposal.authorId === p.workerId ? "employer" : "freelancer"}
+                {" "}
+                response. Fee approval does not mark payment as paid.
+              </p>
+            )}
+            {proposal.authorId !== actorId && proposal.status === "pending" && (
+              <div className="button-row">
+                <button
+                  disabled={busy}
+                  className="button primary"
+                  onClick={() =>
+                    void onCommand({
+                      type: "decideProposal",
+                      projectId: p.id,
+                      proposalId: proposal.id,
+                      accept: true,
+                    })}
+                >
+                  Accept proposed price
+                </button>
+                <button
+                  className="button secondary"
+                  onClick={() => {
+                    setCounterId(proposal.id);
+                    setCounterNote("");
+                    setDeadline(proposal.deadline ?? "");
+                    setAmount((Number(proposal.amountMinor) / 100).toFixed(2));
+                  }}
+                >
+                  Counteroffer
+                </button>
+              </div>
+            )}
           </div>
-        </form>
-      )}
-      {proposalItem && (
-        <form
-          className="pending-card stacked-form"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            try {
-              const ok = await onCommand({
-                type: "proposeAddition",
-                projectId: p.id,
-                revisionId: proposalItem.revisionId,
-                itemId: proposalItem.itemId,
-                description: proposalItem.description,
-                amountMinor: parseAmount(amount),
-                deadline: deadline || null,
-              });
-              if (ok) setProposalItem(null);
-            } catch (e) {
-              onNotify((e as Error).message);
-            }
-          }}
-        >
-          <h4>Propose additional work</h4>
-          <label>
-            What will you add?
-            <textarea
-              rows={2}
-              value={proposalItem.description}
-              onChange={(e) =>
-                setProposalItem({
-                  ...proposalItem,
-                  description: e.target.value,
-                })}
-              required
-            />
-          </label>
-          <div className="field-grid">
+        ))}
+        {counterId && (
+          <form
+            className="stacked-form pending-card"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                if (
+                  await onCommand({
+                    type: "counterProposal",
+                    projectId: p.id,
+                    proposalId: counterId,
+                    note: counterNote,
+                    amountMinor: parseAmount(amount),
+                    deadline: deadline || null,
+                  })
+                ) setCounterId(null);
+              } catch (e) {
+                onNotify((e as Error).message);
+              }
+            }}
+          >
             <label>
-              Additional price · USD
-              <input
-                inputMode="decimal"
-                required
+              Counteroffer price · USD<input
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
+                inputMode="decimal"
+                required
+                pattern="[0-9]+(\.[0-9]{1,2})?"
               />
             </label>
             <label>
-              New deadline
-              <input
+              Proposed due date<input
                 type="date"
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
               />
             </label>
-          </div>
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => setAmount("0.00")}
-          >
-            Waive the charge ($0)
-          </button>
-          <div className="button-row">
+            <label>
+              Explanation (optional)<textarea
+                value={counterNote}
+                onChange={(event) => setCounterNote(event.target.value)}
+                maxLength={2000}
+              />
+            </label>
             <button className="button primary" disabled={busy}>
-              Send proposal
+              Send counteroffer
             </button>
             <button
-              type="button"
               className="button secondary"
-              onClick={() => setProposalItem(null)}
+              type="button"
+              onClick={() => setCounterId(null)}
             >
               Cancel
             </button>
+          </form>
+        )}
+        {!p.revisions.length && p.state !== "submitted" && (
+          <div className="empty-state">
+            <MessageSquare size={28} />
+            <h4>Room for a little back-and-forth</h4>
+            <p>Revision requests and agreed additions will appear here.</p>
           </div>
-        </form>
-      )}
-      {p.proposals.map((proposal) => (
-        <div className="pending-card" key={proposal.id}>
-          <div className="section-heading">
-            <span className="eyebrow">ADDITIONAL WORK</span>
-            <span className="pill">{proposal.status}</span>
-          </div>
-          <h4>{proposal.description}</h4>
-          <strong className="proposal-price">
-            + {money(proposal.amountMinor)}
-            {proposal.amountMinor === "0" && <small>· charge waived</small>}
-          </strong>
-          {proposal.deadline && <p>Proposed deadline: {proposal.deadline}</p>}
-          <p>
-            {proposal.status === "pending"
-              ? "The agreed total stays unchanged until approval."
-              : `Decision recorded ${
-                new Date(proposal.decidedAt!).toLocaleDateString()
-              }.`}
-          </p>
-          {proposal.authorId === snapshot.actorId &&
-            proposal.status === "pending" &&
-            proposal.baseAgreementId !== p.activeAgreementId && (
-            <button
-              className="button secondary"
-              disabled={busy}
-              onClick={() =>
-                void onCommand({
-                  type: "rebaseProposal",
-                  projectId: p.id,
-                  proposalId: proposal.id,
-                })}
-            >
-              Rebase on current terms
-            </button>
-          )}
-          <p>
-            Proposed by {snapshot.people.find((person) =>
-              person.id === proposal.authorId
-            )
-              ?.name ??
-              (proposal.authorId === p.workerId ? "Freelancer" : "Employer")}
-            {proposal.status === "pending"
-              ? ` · Awaiting ${
-                proposal.authorId === p.workerId ? "employer" : "freelancer"
-              } response`
-              : ""}
-          </p>
-          {proposal.note && <p>{proposal.note}</p>}
-          {proposal.authorId !== snapshot.actorId &&
-            proposal.status === "pending" && (
-            <div className="button-row">
-              <button
-                disabled={busy}
-                className="button primary"
-                onClick={() =>
-                  void onCommand({
-                    type: "decideProposal",
-                    projectId: p.id,
-                    proposalId: proposal.id,
-                    accept: true,
-                  })}
-              >
-                Accept proposed price
-              </button>
-              <button
-                disabled={busy}
-                className="button secondary"
-                onClick={() => {
-                  setCounterId(proposal.id);
-                  setCounterAmount(
-                    (Number(proposal.amountMinor) / 100).toFixed(2),
-                  );
-                  setCounterNote("");
-                }}
-              >
-                Counteroffer
-              </button>
-            </div>
-          )}
-          {counterId === proposal.id && proposal.status === "pending" && (
-            <form
-              className="stacked-form"
-              onSubmit={async (event) => {
-                event.preventDefault();
-                try {
-                  if (
-                    await onCommand({
-                      type: "counterProposal",
-                      projectId: p.id,
-                      proposalId: proposal.id,
-                      amountMinor: parseAmount(counterAmount),
-                      note: counterNote,
-                    })
-                  ) setCounterId(null);
-                } catch (error) {
-                  onNotify((error as Error).message);
-                }
-              }}
-            >
-              <button
-                type="button"
-                className="text-button"
-                onClick={() =>
-                  setCounterId(null)}
-              >
-                ← Back to proposal
-              </button>
-              <label>
-                Counteroffer price · USD<input
-                  value={counterAmount}
-                  onChange={(e) => setCounterAmount(e.target.value)}
-                  inputMode="decimal"
-                  required
-                />
-              </label>
-              <label>
-                Explanation (optional)<textarea
-                  value={counterNote}
-                  onChange={(e) => setCounterNote(e.target.value)}
-                  maxLength={2000}
-                />
-              </label>
-              <button className="button primary" disabled={busy}>
-                Send counteroffer
-              </button>
-            </form>
-          )}
-        </div>
-      ))}
-      {!p.revisions.length && p.state !== "submitted" && (
-        <div className="empty-state">
-          <MessageSquare size={28} />
-          <h4>Room for a little back-and-forth</h4>
-          <p>Revision requests and agreed additions will appear here.</p>
-        </div>
-      )}
-      <CommentBox projectId={p.id} onCommand={onCommand} busy={busy} />
+        )}
+        <CommentBox projectId={p.id} onCommand={onCommand} busy={busy} />
+      </section>
     </>
   );
 }

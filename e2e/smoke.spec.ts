@@ -9,6 +9,6 @@ test("loads the demo workspace and opens the project whiteboard", async ({ page 
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Project whiteboard" }).click();
-  await expect(page.getByLabel("Project hierarchy whiteboard")).toBeVisible();
+  await expect(page.getByLabel("Project collaboration whiteboard")).toBeVisible();
 });
 

@@ -19,24 +19,30 @@ counteroffers work in this local simulation; their authenticated API commands
 require a future coordinated backend release. Do not use this preview to verify
 new backend commands or real provider payments.
 
-The branch starts before newer changes on `main`. Its draft PR is for reviewing
-this existing implementation, and any merge conflicts must be resolved in a
-separate integration step before considering a release. Publishing this branch
-does not deploy Supabase functions or run database migrations.
+The branch now merges `origin/main` at `973205a291d7c777dc55289e4eebbf004adddc34`.
+Main's reference-aligned Studio, compact role overview, editable whiteboard,
+role roster, draft duplication, delivery preview, revision composer and rate-limit
+fixes remain the baseline. The workflow changes are integrated into that UI.
+Publishing this branch does not deploy Supabase functions or run migrations.
+See [main integration verification](main-integration.md) for the new checks.
 
 ## Changes
 
 - Navigation now contains **Project studio**, **Project whiteboard** and **Revisions**. The separate Work map screen is no longer mounted. Both project views derive their hierarchy from the same saved, authorized workspace snapshot: **Project → Role → Member → Tasks**.
-- Existing assignments retain their IDs, terms, deliveries, revision history, invoices and permissions. A legacy assignment remains its project's first task. Additional tasks use the existing assignment records with an optional `parentProjectId` in their saved JSON. No schema migration, data reset or invented acceptance record is needed. The API validates that the parent is a top-level project in the employer's workspace; each task keeps its own assignee authorization and financial ledger.
+- Existing assignments retain their IDs, terms, deliveries, revision history, invoices and permissions. Main's saved board projects and project roles remain canonical through `organization.collectionId` / `roleId`. Earlier branch assignments with `parentProjectId` are mapped into compatible collections without changing their saved ledgers. Additional tasks use the existing assignment records. No schema migration, data reset or invented acceptance record is needed. The API validates that the parent is a top-level project in the employer's workspace; each task keeps its own assignee authorization and financial ledger.
 - Whiteboard cards are automatically spaced, with connectors only for parent/child relationships. Project, role, member and task cards open the same panels used by Studio. Zoom, pan, fit and fullscreen remain available. Existing saved drawing boards, notes, shapes, connectors, comments, file upload/version/preview tools, activity, and team/group organization are reachable through **Files & workspace tools**. Saved layouts are retained.
 - Nested panels have Back controls and breadcrumbs. Browser Back traverses the same levels, including when a member or task is opened directly. Member scroll and workspace search are retained, and identical destinations do not add history entries. Dashboard shortcuts use the same navigation.
-- **Add task** is available in Studio and Whiteboard. From a member, assignment and project context are fixed and Project/Role selectors are absent. The general form can select another eligible workspace member and project. Neither form has a separate Agreement section. Scope, price, deadline, included revisions and payment timing are proposed together. The existing workflow permits only **Awaiting scope & price acceptance** as the starting status; work starts after the assigned member accepts.
+- **Add task** is available in Studio and Whiteboard. From a member, assignment and project context are fixed and Project/Role selectors are absent. The general form can select another eligible workspace member and project. Neither form has a separate Agreement section. Scope, price, deadline, included revisions and payment timing are proposed together. Main's **Draft** and **Proposed** task statuses remain available; proposed work starts after the assigned member accepts.
 - Revisions lists members first, then their tasks, with project/role context, current task status, latest delivery, individual revision dispositions, fees and pending responder. A task opens the shared delivery preview, revision history and Add revision workflow.
 - Paid revision proposals now support **Accept proposed price** and **Counteroffer** for the responding party. Counteroffers retain the previous proposals, author, amount and explanation. Only the other party can respond. Proposed amounts leave the total unchanged; acceptance adds only the accepted amount once. Existing stale-agreement and optimistic project-version protections remain.
 - Task details show the base agreed price, accepted revision charges, paid amount, remaining balance, due date and next actor. Invoice/payment labels come from stored backend/provider state. A connected freelancer can issue an invoice only when the existing approval/allocation workflow permits it. Employer **Pay now** links require an actual payable Sandbox invoice, a provider ID and an HTTPS Sandbox PayPal URL. Pending/paid/cancelled/sample invoices cannot create a fake payment action. Redirects and approval never mark payment paid.
 - Task badges use yellow for In progress, orange for Awaiting approval and green for Approved, with text labels and accessible light/dark shades. Counts derive from saved task status after mutations and refresh.
 
-## Verification
+## Original workflow verification (before the main integration)
+
+These results describe commit `d54a7f2`; current merge verification is recorded in
+[main-integration.md](main-integration.md). Hosted integrations were not rerun as
+part of this UI merge.
 
 | Check | Result | Evidence boundary |
 | --- | --- | --- |

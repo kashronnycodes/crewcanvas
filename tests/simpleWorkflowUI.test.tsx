@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   cleanup,
   fireEvent,
@@ -11,6 +11,10 @@ import App from "../src/App";
 import { mutateDemo, repository, resetDemo } from "../src/services";
 import { projectFinance } from "../shared/workspace";
 import type { WorkspaceSnapshot } from "../shared/types";
+vi.mock(
+  "../src/components/WorkflowCanvas",
+  () => ({ default: () => <div>Reference canvas under test</div> }),
+);
 beforeEach(() => {
   resetDemo();
   Object.defineProperty(window, "matchMedia", {
@@ -47,12 +51,16 @@ async function openSubmission() {
       <App />
     </QueryClientProvider>,
   );
+  fireEvent.click(await screen.findByRole("button", { name: "Task list" }));
   const snapshot = await repository.load();
-  const task = snapshot.projects[0], person = snapshot.people.find(p => p.id === task.workerId)!;
-  fireEvent.click(await screen.findByRole("button", { name: task.title }));
-  fireEvent.click(await screen.findByRole("button", { name: `Open role ${person.role}` }));
-  fireEvent.click(await screen.findByRole("button", { name: `Open member ${person.name}` }));
-  fireEvent.click(await screen.findByRole("button", { name: "Task details →" }));
+  const task = snapshot.projects[0],
+    person = snapshot.people.find((p) => p.id === task.workerId)!;
+  fireEvent.click(
+    await screen.findByRole("button", { name: `Open member ${person.name}` }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Task details →" }),
+  );
   fireEvent.click(await screen.findByRole("tab", { name: "Deliverables" }));
   expect(
     (await screen.findByRole("tab", { name: "Deliverables" })).getAttribute(
@@ -85,9 +93,7 @@ it("opens revision feedback and sends a request without adding a fee or invoice"
     ),
   ).toBe("true");
   fireEvent.change(
-    screen.getByPlaceholderText(
-      "Fix the spelling at 0:14 and add a second ending.",
-    ),
+    screen.getByLabelText("Your feedback"),
     { target: { value: "Please change the background music." } },
   );
   fireEvent.click(screen.getByRole("button", { name: "Review manually" }));

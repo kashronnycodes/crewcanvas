@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "../src/App";
@@ -9,6 +9,10 @@ import {
   setDemoActor,
 } from "../src/services";
 import { IDS } from "../shared/seed";
+vi.mock(
+  "../src/components/WorkflowCanvas",
+  () => ({ default: () => <div>Reference canvas under test</div> }),
+);
 beforeEach(() => {
   resetDemo();
   Object.defineProperty(window, "matchMedia", {
@@ -58,13 +62,14 @@ it("submits an uploaded file without requiring a Google Drive URL", async () => 
     name: "Demo viewing role",
   });
   fireEvent.change(role, { target: { value: IDS.ava } });
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Recruitment cut" }),
-  );
+  fireEvent.click(await screen.findByRole("button", { name: "Task list" }));
   const snapshot = await repository.load(), person = snapshot.people[0];
-  fireEvent.click(await screen.findByRole("button", { name: `Open role ${person.role}` }));
-  fireEvent.click(await screen.findByRole("button", { name: `Open member ${person.name}` }));
-  fireEvent.click(await screen.findByRole("button", { name: "Task details →" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: `Open member ${person.name}` }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Task details →" }),
+  );
   fireEvent.click(await screen.findByRole("tab", { name: "Deliverables" }));
   fireEvent.change(
     screen.getByRole("combobox", { name: "Project file" }),

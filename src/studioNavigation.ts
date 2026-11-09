@@ -28,7 +28,8 @@ export function useStudioNavigation(workspaceId: string) {
   function remember() {
     positions.current.set(
       routeKey(current.current),
-      document.querySelector(".modal-content, .drawer-body")?.scrollTop ?? 0,
+      document.querySelector(".modal-content, .drawer-body, .workflow-panel")
+        ?.scrollTop ?? 0,
     );
   }
   useEffect(() => {
@@ -51,7 +52,9 @@ export function useStudioNavigation(workspaceId: string) {
     return () => window.removeEventListener("popstate", pop);
   }, [workspaceId]);
   useEffect(() => {
-    const panel = document.querySelector(".modal-content, .drawer-body");
+    const panel = document.querySelector(
+      ".modal-content, .drawer-body, .workflow-panel",
+    );
     if (panel) panel.scrollTop = positions.current.get(routeKey(route)) ?? 0;
   }, [route]);
   function open(next: StudioRoute) {
@@ -93,5 +96,10 @@ export function useStudioNavigation(workspaceId: string) {
       setRoute(parent);
     }
   }
-  return { route, open, back };
+  function close() {
+    remember();
+    if (depth.current > 0) history.go(-depth.current);
+    else setRoute({});
+  }
+  return { route, open, back, close };
 }

@@ -1,4 +1,5 @@
 .git
+docs/
 .openai
 .sites-runtime
 .supabase

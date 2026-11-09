@@ -1,4 +1,4 @@
-import { openTask, closePanels } from "./helpers";
+import { closePanels, openTask } from "./helpers";
 import { Buffer } from "node:buffer";
 import { expect, test } from "@playwright/test";
 
@@ -6,7 +6,8 @@ const avaId = "20000000-0000-4000-8000-000000000002";
 
 async function openProjects(page: import("@playwright/test").Page) {
   await closePanels(page);
-  await page.getByRole("button", { name: "Project studio", exact: true }).click();
+  await page.getByRole("button", { name: "Project studio", exact: true })
+    .click();
 }
 
 async function createProject(
@@ -66,16 +67,22 @@ test("assignment is visible only to the assigned freelancer and updated terms pr
   await openProjects(page);
   await openTask(page, projectName);
   await page.getByRole("button", { name: "Accept agreement" }).click();
-  await expect(page.getByRole("tabpanel").getByText(
-    "Updated scope: produce two export sizes for the campaign.",
-  ).first()).toBeVisible();
+  await expect(
+    page.getByRole("tabpanel").getByText(
+      "Updated scope: produce two export sizes for the campaign.",
+    ).first(),
+  ).toBeVisible();
   await page.getByText(/Agreement history · 2 versions/).click();
-  await expect(page.locator(".agreement-history").getByText(
-    `Create the first version of ${projectName} and deliver a final export.`,
-  )).toBeVisible();
-  await expect(page.locator(".agreement-history").getByText(
-    "VERSION 2 · CURRENT ACCEPTED TERMS",
-  )).toBeVisible();
+  await expect(
+    page.locator(".agreement-history").getByText(
+      `Create the first version of ${projectName} and deliver a final export.`,
+    ),
+  ).toBeVisible();
+  await expect(
+    page.locator(".agreement-history").getByText(
+      "VERSION 2 · CURRENT ACCEPTED TERMS",
+    ),
+  ).toBeVisible();
 });
 
 test("freelancer can decline a proposed agreement", async ({ page }) => {
@@ -89,9 +96,11 @@ test("freelancer can decline a proposed agreement", async ({ page }) => {
   await openTask(page, projectName);
   await page.getByRole("button", { name: "Decline", exact: true }).click();
   await page.getByText(/Agreement history · 1 version/).click();
-  await expect(page.locator(".agreement-history").getByText(
-    "VERSION 1 · DECLINED",
-  )).toBeVisible();
+  await expect(
+    page.locator(".agreement-history").getByText(
+      "VERSION 1 · DECLINED",
+    ),
+  ).toBeVisible();
   await expect(page.getByText("Awaiting acceptance", { exact: true }))
     .toBeVisible();
 });
@@ -108,7 +117,8 @@ test("employer requests a revision and freelancer responds; request persists aft
   await page.getByRole("button", { name: "Review manually" }).click();
   await page.getByRole("button", { name: "Send revision request" }).click();
   await expect(page.getByText(feedback)).toBeVisible();
-  await expect(page.getByText("awaiting response", { exact: true })).toBeVisible();
+  await expect(page.getByText("awaiting response", { exact: true }))
+    .toBeVisible();
 
   await page.getByLabel("Demo viewing role").selectOption({
     label: "Jeshua · Worker",
@@ -152,7 +162,9 @@ test("uploads a project file and submits its stored version as delivery", async 
   });
   await expect(page.getByRole("button", { name: `${fileName} · v1` }))
     .toBeVisible();
-  await page.getByLabel("Project file").selectOption({ label: `${fileName} · v1` });
+  await page.getByLabel("Project file").selectOption({
+    label: `${fileName} · v1`,
+  });
   await page.getByLabel("Version label").fill("v1 · uploaded final");
   await page.getByRole("button", { name: "Submit for review" }).click();
   await expect(page.getByRole("button", { name: /Open submitted file · v1/ }))
@@ -191,18 +203,29 @@ test("replaced workspace files retain version history after refresh", async ({ p
   });
   await closePanels(page);
   await page.getByRole("button", { name: "Files & workspace tools" }).click();
-  await page.getByRole("button", { name: `${fileName} · v1`, exact: true }).click();
+  await page.getByRole("button", { name: `${fileName} · v1`, exact: true })
+    .click();
   await page.getByRole("button", { name: "Replace with new version" }).click();
-  await page.locator('input[type="file"]').last().setInputFiles({ name: fileName, mimeType: "text/plain", buffer: Buffer.from("Second version.") });
-  await expect(page.getByRole("button", { name: `${fileName} · v2`, exact: true })).toBeVisible();
+  await page.locator('input[type="file"]').last().setInputFiles({
+    name: fileName,
+    mimeType: "text/plain",
+    buffer: Buffer.from("Second version."),
+  });
+  await expect(
+    page.getByRole("button", { name: `${fileName} · v2`, exact: true }),
+  ).toBeVisible();
   await page.getByText("Version history", { exact: true }).click();
-  await expect(page.getByRole("button", { name: `v1 · ${fileName}` })).toBeVisible();
+  await expect(page.getByRole("button", { name: `v1 · ${fileName}` }))
+    .toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: "Files & workspace tools" }).click();
-  await page.getByRole("button", { name: `${fileName} · v2`, exact: true }).click();
+  await page.getByRole("button", { name: `${fileName} · v2`, exact: true })
+    .click();
   await page.getByText("Version history", { exact: true }).click();
-  await expect(page.getByRole("button", { name: `v1 · ${fileName}` })).toBeVisible();
-  await expect(page.getByRole("button", { name: `v2 · ${fileName}` })).toBeVisible();
+  await expect(page.getByRole("button", { name: `v1 · ${fileName}` }))
+    .toBeVisible();
+  await expect(page.getByRole("button", { name: `v2 · ${fileName}` }))
+    .toBeVisible();
 });
 
 test("rejects unsupported and empty project files", async ({ page }) => {
@@ -274,7 +297,9 @@ test("freelancer proposes extra work and employer accepts it", async ({ page }) 
 test("project whiteboard note edits persist after refresh", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Files & workspace tools" }).click();
-  await expect(page.getByLabel("Project collaboration whiteboard"))
+  await expect(
+    page.getByRole("dialog").getByLabel("Project collaboration whiteboard"),
+  )
     .toBeVisible();
   await expect(page.getByRole("button", { name: "Add sticky note" }))
     .toBeEnabled();
@@ -285,30 +310,53 @@ test("project whiteboard note edits persist after refresh", async ({ page }) => 
   const content = inspector.getByLabel("Content");
   await content.fill("E2E whiteboard note survives refresh");
   await inspector.getByRole("button", { name: "Save object" }).click();
-  await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible();
-  await expect(page.locator(".board-object-text")).toContainText(
-    "E2E whiteboard note survives refresh",
-  );
+  await expect(
+    page.getByRole("dialog").getByText("Saved in this browser", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog").locator(".board-object-text"))
+    .toContainText(
+      "E2E whiteboard note survives refresh",
+    );
 
   await page.reload();
   await page.getByRole("button", { name: "Files & workspace tools" }).click();
-  await expect(page.locator(".board-object-text")).toContainText(
-    "E2E whiteboard note survives refresh",
-  );
+  await expect(page.getByRole("dialog").locator(".board-object-text"))
+    .toContainText(
+      "E2E whiteboard note survives refresh",
+    );
 });
 
 test("whiteboard hierarchy is automatically spaced and retains task assignments after refresh", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Project whiteboard", exact: true }).click();
+  await page.getByRole("button", { name: "Project whiteboard", exact: true })
+    .click();
   await expect(page.locator(".hierarchy-card").first()).toBeVisible();
-  const data = await page.evaluate(() => localStorage.getItem("crewcanvas.demo.v1"));
-  const positions = await page.locator(".react-flow__node-hierarchy").evaluateAll(nodes => nodes.map(node => ({x: node.getBoundingClientRect().x, y: node.getBoundingClientRect().y, w: node.getBoundingClientRect().width, h: node.getBoundingClientRect().height})));
-  for (let i = 0; i < positions.length; i++) for (let j = i + 1; j < positions.length; j++) {
-    const a = positions[i], b = positions[j];
-    expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
+  const data = await page.evaluate(() =>
+    localStorage.getItem("crewcanvas.demo.v1")
+  );
+  const positions = await page.locator(".react-flow__node-hierarchy")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        x: node.getBoundingClientRect().x,
+        y: node.getBoundingClientRect().y,
+        w: node.getBoundingClientRect().width,
+        h: node.getBoundingClientRect().height,
+      }))
+    );
+  for (let i = 0; i < positions.length; i++) {
+    for (let j = i + 1; j < positions.length; j++) {
+      const a = positions[i], b = positions[j];
+      expect(
+        a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y ||
+          b.y + b.h <= a.y,
+      ).toBe(true);
+    }
   }
   await page.reload();
-  expect(await page.evaluate(() => localStorage.getItem("crewcanvas.demo.v1"))).toBe(data);
+  expect(await page.evaluate(() => localStorage.getItem("crewcanvas.demo.v1")))
+    .toBe(data);
 });
 
 test("collapsed workspace canvas groups persist after refresh", async ({ page }) => {
@@ -319,7 +367,8 @@ test("collapsed workspace canvas groups persist after refresh", async ({ page })
   await page.goto("/");
   await page.getByRole("button", { name: "Files & workspace tools" }).click();
   await page.getByText("People & saved role groups", { exact: true }).click();
-  const collapseButton = page.getByRole("button", { name: /^Collapse / }).first();
+  const collapseButton = page.getByRole("button", { name: /^Collapse / })
+    .first();
   const expandedName = await collapseButton.textContent();
   expect(expandedName).toBeTruthy();
   const collapsedName = expandedName!.replace("Collapse ", "Expand ");
@@ -337,31 +386,33 @@ test("collapsed workspace canvas groups persist after refresh", async ({ page })
     }, collapsedName)
   ).toBe(true);
 
-
   await page.reload();
   await page.getByRole("button", { name: "Files & workspace tools" }).click();
   await page.getByText("People & saved role groups", { exact: true }).click();
   await expect(page.getByRole("button", { name: collapsedName })).toBeVisible();
 });
 
-test("mobile viewport keeps project navigation usable without horizontal page overflow", async ({ page }, testInfo) => {
-  test.skip(
-    !testInfo.project.name.startsWith("Mobile"),
-    "Responsive layout check runs in the configured mobile projects.",
-  );
-  await page.goto("/");
+test(
+  "mobile viewport keeps project navigation usable without horizontal page overflow",
+  async ({ page }, testInfo) => {
+    test.skip(
+      !testInfo.project.name.startsWith("Mobile"),
+      "Responsive layout check runs in the configured mobile projects.",
+    );
+    await page.goto("/");
 
-  await expect(page.getByRole("button", { name: "Project studio", exact: true }))
-    .toBeVisible();
-  await page.getByRole("button", { name: "Project studio", exact: true }).click();
-  await expect(page.getByRole("heading", {
-    name: "Good work starts with your people.",
-  })).toBeVisible();
-  await expect.poll(() =>
-    page.evaluate(() =>
-      document.documentElement.scrollWidth <=
-        document.documentElement.clientWidth
+    await expect(
+      page.getByRole("button", { name: "Project studio", exact: true }),
     )
-  ).toBe(true);
-});
-
+      .toBeVisible();
+    await page.getByRole("button", { name: "Project studio", exact: true })
+      .click();
+    await expect(page.getByLabel("Studio project")).toBeVisible();
+    await expect.poll(() =>
+      page.evaluate(() =>
+        document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth
+      )
+    ).toBe(true);
+  },
+);
