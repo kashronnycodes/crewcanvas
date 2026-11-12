@@ -3,7 +3,7 @@ import { activeAgreement, execute, uid } from "../shared/domain";
 import { IDS, seedWorkspace } from "../shared/seed";
 import { payableInvoice, studioProjects, taskPayment } from "../shared/studio";
 import { parentRoute } from "../src/studioNavigation";
-import { repository, resetDemo, setDemoActor } from "../src/services";
+import { repository, resetDemo, setDemoActor } from "./fixtures/testRepository";
 import type { Invoice, SessionActor } from "../shared/types";
 const employer: SessionActor = {
   id: IDS.myron,
@@ -22,7 +22,7 @@ describe("task grouping and creation", () => {
     await repository.command({
       type: "createProject",
       parentProjectId: root.id,
-      workerId: root.workerId,
+      workerId: root.workerId!,
       title: "Member task",
       publish: true,
       terms: {
@@ -40,7 +40,7 @@ describe("task grouping and creation", () => {
       task = saved.projects.find((p) => p.title === "Member task")!;
     expect(task).toMatchObject({
       parentProjectId: root.id,
-      workerId: root.workerId,
+      workerId: root.workerId!,
       activeAgreementId: null,
       state: "awaiting_agreement",
       invoices: [],
@@ -50,43 +50,37 @@ describe("task grouping and creation", () => {
     expect(parent.tasks.map((t) => t.id)).toEqual([root.id, task.id]);
     expect(
       parent.roles.flatMap((r) => r.members).find((m) =>
-        m.person.id === root.workerId
+        m.person.id === root.workerId!
       )?.tasks,
     ).toHaveLength(2);
     expect(saved.projects.find((p) => p.id === root.id)).toEqual(root);
-    setDemoActor(root.workerId);
+    setDemoActor(root.workerId!);
     expect(
       studioProjects(await repository.load()).flatMap((p) => p.tasks).every((
         p,
-      ) => p.workerId === root.workerId),
+      ) => p.workerId! === root.workerId!),
     ).toBe(true);
   });
   it("does not expose another assignee through a shared project grouping", () => {
     const s = seedWorkspace(), own = s.projects[1];
     own.parentProjectId = s.projects[0].id;
     s.projects = [own];
-    s.people = s.people.filter((p) => p.id === own.workerId);
+    s.people = s.people.filter((p) => p.id === own.workerId!);
     const group = studioProjects(s).find((p) =>
       p.tasks.some((t) => t.id === own.id)
     )!;
     expect(group.title).toBe("Assigned project");
     expect(group.roles.flatMap((r) => r.members).map((m) => m.person.id))
-      .toEqual([own.workerId]);
+      .toEqual([own.workerId!]);
   });
-  it("returns through form, task, member, role and project levels", () => {
+  it("returns directly from tasks without creating member task navigation", () => {
     const route = {
       projectId: "p",
       role: "Editor",
       memberId: "m",
       taskId: "t",
     };
-    expect(parentRoute(route)).toEqual({
-      projectId: "p",
-      role: "Editor",
-      memberId: "m",
-      taskId: undefined,
-      tools: undefined,
-    });
+    expect(parentRoute(route)).toEqual({});
     expect(
       parentRoute({
         projectId: "p",
@@ -110,7 +104,7 @@ describe("task grouping and creation", () => {
 });
 describe("versioned revision counteroffers", () => {
   it("negotiates in both directions, preserves history, and charges only the accepted latest amount once", () => {
-    let p = seedWorkspace().projects.find((p) => p.workerId === IDS.ethan)!;
+    let p = seedWorkspace().projects.find((p) => p.workerId! === IDS.ethan)!;
     const original = structuredClone(activeAgreement(p)!);
     const first = p.proposals[0];
     p = execute(p, {
@@ -151,7 +145,7 @@ describe("versioned revision counteroffers", () => {
     expect(taskPayment(p).charges).toBe(1750n);
   });
   it("lets the assigned freelancer accept an employer counteroffer", () => {
-    let p = seedWorkspace().projects.find((p) => p.workerId === IDS.ethan)!;
+    let p = seedWorkspace().projects.find((p) => p.workerId! === IDS.ethan)!;
     p = execute(p, {
       type: "counterProposal",
       projectId: p.id,
@@ -171,7 +165,7 @@ describe("versioned revision counteroffers", () => {
     );
   });
   it("rejects own, stale, superseded and peer responses", () => {
-    const p = seedWorkspace().projects.find((p) => p.workerId === IDS.ethan)!;
+    const p = seedWorkspace().projects.find((p) => p.workerId! === IDS.ethan)!;
     const command = {
       type: "counterProposal" as const,
       projectId: p.id,
@@ -264,7 +258,7 @@ describe("payment responsibilities", () => {
     p.activeAgreementId = null;
     expect(taskPayment(p).next).toMatch(/^Freelancer/);
     const revision = seedWorkspace().projects.find((p) =>
-      p.workerId === IDS.ethan
+      p.workerId! === IDS.ethan
     )!;
     expect(taskPayment(revision).next).toMatch(/^Employer/);
   });

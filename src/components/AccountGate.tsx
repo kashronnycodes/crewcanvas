@@ -1,14 +1,14 @@
-import { type ReactNode, useEffect, useState } from "react";
+import {signInJudge} from "../judgeAccounts";
+import JudgeAccounts from "./JudgeAccounts";
 import type { User } from "@supabase/supabase-js";
-import type { Person } from "../../shared/types";
-import DemoAccounts from "./DemoAccounts";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery,useQueryClient } from "@tanstack/react-query";
+import { type ReactNode,useEffect,useState } from "react";
 import {
-  api,
-  setActiveWorkspace,
-  signOutSession,
-  signupAvailable,
-  supabase,
+api,
+setActiveWorkspace,
+signOutSession,
+signupAvailable,
+supabase,
 } from "../services";
 
 interface Membership {
@@ -132,7 +132,7 @@ export default function AccountGate(
     try {
       await fn();
     } catch (e) {
-      setError((e as Error).message);
+      setError((e as Error).message === "Failed to fetch" ? "Could not connect. Check your connection and try again." : (e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -142,18 +142,17 @@ export default function AccountGate(
   }
   return (
     <div className="login-screen">
-      <div className="brand">✦ CrewCanvas</div>
+      <div className="brand">CrewCanvas</div>
       <div className="login-card">
-        <span className="eyebrow">A SPACE FOR GOOD WORK</span>
         {!ready ? <p>Restoring your session…</p> : !user
           ? (
             <>
               <h1>
                 {signup
-                  ? "Make room for good work."
-                  : "Welcome back to your canvas."}
+                  ? "Create account"
+                  : "Sign in to CrewCanvas"}
               </h1>
-              <p>Clear agreements. Connected people. Room to create.</p>
+              <p>Use your account to open your workspaces.</p>
               {!supabase
                 ? (
                   <p role="alert">
@@ -232,19 +231,21 @@ export default function AccountGate(
                     )}
                     {!registration && (
                       <p className="fine-print">
-                        Team testing is invite-only. Use your confirmed
-                        CrewCanvas account, or ask the workspace owner to
-                        arrange access.
+                        Access is invite-only. Sign in with your CrewCanvas account or ask a workspace owner for an invitation.
                       </p>
                     )}
                   </form>
                 )}
-              {!signup && <DemoAccounts />}
+              {supabase && !join && <JudgeAccounts busy={busy} onSignIn={async (role, code) => {
+                setSignup(false);
+                setNotice("");
+                await action(() => signInJudge(role, code));
+              }} />}
             </>
           )
           : (
             <>
-              <h1>{join ? "Join your crew." : "Your workspaces."}</h1>
+              <h1>{join ? "Join workspace" : "Workspaces"}</h1>
               <p>Signed in as {user.email}</p>
               {join
                 ? (
@@ -305,16 +306,6 @@ export default function AccountGate(
                         </button>
                       </p>
                     )}
-                    {memberships.data?.filter((m) =>
-                      m.workspace_id === workspace &&
-                      m.access_role === "employer"
-                    ).map((m) => (
-                      <WorkspaceSettings
-                        key={m.id}
-                        workspace={m.workspaces}
-                        onSaved={() => void memberships.refetch()}
-                      />
-                    ))}
                     <form
                       className="stacked-form"
                       onSubmit={(e) => {
@@ -376,115 +367,7 @@ export default function AccountGate(
         {error && <p className="error-message" role="alert">{error}</p>}
         {notice && <p role="status">{notice}</p>}
       </div>
-      <span className="login-footer">
-        A little structure. A lot of possibility.
-      </span>
+
     </div>
-  );
-}
-function WorkspaceSettings(
-  { workspace, onSaved }: {
-    workspace: Membership["workspaces"];
-    onSaved: () => void;
-  },
-) {
-  const [error, setError] = useState(""), [busy, setBusy] = useState(false);
-  const team = useQuery<Person[]>({
-    queryKey: ["settings-members", workspace.id],
-    queryFn: () => api("members"),
-    retry: false,
-  });
-  async function save(fn: () => Promise<unknown>) {
-    setBusy(true);
-    setError("");
-    try {
-      await fn();
-      onSaved();
-      await team.refetch();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <details>
-      <summary>Workspace and team settings</summary>
-      <form
-        className="stacked-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const values = new FormData(e.currentTarget);
-          void save(() =>
-            api("workspaces/update", {
-              name: values.get("name"),
-              timezone: values.get("timezone"),
-            })
-          );
-        }}
-      >
-        <label>
-          Workspace name<input
-            name="name"
-            defaultValue={workspace.name}
-            minLength={2}
-            maxLength={80}
-            required
-          />
-        </label>
-        <label>
-          Timezone<input
-            name="timezone"
-            defaultValue={workspace.timezone}
-            required
-          />
-        </label>
-        <button className="button secondary" disabled={busy}>
-          Save workspace settings
-        </button>
-      </form>
-      {(team.data ?? []).map((member) => (
-        <form
-          className="stacked-form"
-          key={member.id}
-          onSubmit={(e) => {
-            e.preventDefault();
-            const values = new FormData(e.currentTarget);
-            void save(() =>
-              api("members/update", {
-                id: member.id,
-                name: values.get("name"),
-                role: values.get("role"),
-              })
-            );
-          }}
-        >
-          <label>
-            Member name<input
-              name="name"
-              defaultValue={member.name}
-              minLength={2}
-              maxLength={80}
-              required
-            />
-          </label>
-          <label>
-            Creative role<input
-              name="role"
-              defaultValue={member.role}
-              minLength={2}
-              maxLength={80}
-              required
-            />
-          </label>
-          <button className="button secondary" disabled={busy}>
-            Save member details
-          </button>
-        </form>
-      ))}
-      {(error || team.error) && (
-        <p role="alert">{error || team.error?.message}</p>
-      )}
-    </details>
   );
 }

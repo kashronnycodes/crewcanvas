@@ -1,7 +1,7 @@
+import { execute } from "./fixtures/simulation";
 import { describe, expect, it } from "vitest";
 import {
   activeAgreement,
-  execute,
   indicators,
   invoiceAttention,
   makeAgreement,

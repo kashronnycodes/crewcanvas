@@ -168,7 +168,7 @@ export function simpleFreelanceGraph(s: WorkspaceSnapshot) {
       row + (referenced.length + 1) * 235 + 10,
       "payments",
     );
-    link(p.workerId, `project:${p.id}`);
+    if (p.workerId) link(p.workerId, `project:${p.id}`);
     link(`project:${p.id}`, `task:${p.id}`);
     link(`task:${p.id}`, deliveryId);
     link(deliveryId, `payment:${p.id}`);

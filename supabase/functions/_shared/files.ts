@@ -72,12 +72,14 @@ export async function uploadFile(req: Request, user: SessionActor) {
   }).formData();
   const meta = z.object({
     id: z.uuid(),
+    purpose: z.literal("revision_reference").optional(),
     projectId: z.uuid().nullable(),
     expected: z.coerce.number().int().min(0),
     x: z.coerce.number().finite(),
     y: z.coerce.number().finite(),
   }).parse({
     id: form.get("id"),
+    purpose: form.get("purpose") || undefined,
     projectId: form.get("projectId") || null,
     expected: form.get("expected"),
     x: form.get("x"),
@@ -114,6 +116,8 @@ export async function uploadFile(req: Request, user: SessionActor) {
       "Workers must upload to an assigned project.",
     );
   }
+  const purpose = prior?.purpose ?? meta.purpose;
+  if (purpose && (!projectId || !mime.startsWith("image/"))) throw new HttpError(400, "VALIDATION", "Revision references must be images attached to a task.");
   const now = new Date().toISOString();
   const path = `${user.workspaceId}/${meta.id}/${crypto.randomUUID()}.${
     file.name.split(".").pop()!.toLowerCase()
@@ -133,6 +137,7 @@ export async function uploadFile(req: Request, user: SessionActor) {
   }
   const updated: WorkspaceFile = {
     id: meta.id,
+    ...(purpose ? { purpose } : {}),
     workspaceId: user.workspaceId,
     projectId,
     uploadedBy: prior?.uploadedBy ?? user.id,
@@ -176,6 +181,11 @@ export async function updateFile(input: unknown, user: SessionActor) {
     );
   }
   if (value.projectId) await authorizedProject(value.projectId, user);
+  if (value.remove || file.projectId !== value.projectId) {
+    const used = await admin().from("revisions").select("id").contains("data", {references:[{fileId:file.id}]});
+    if (used.error) throw used.error;
+    if (used.data.length) throw new HttpError(409, "IN_USE", "Revision reference images are retained with their task and revision history.");
+  }
   const changed = {
     ...file,
     name: value.name,

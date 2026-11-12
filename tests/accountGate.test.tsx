@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   api: vi.fn(),
   setActive: vi.fn(),
   signupAvailable: vi.fn(),
+  judgeSignIn: vi.fn(),
   changed: undefined as undefined | ((event: string, session: unknown) => void),
 }));
 vi.mock("../src/services", () => ({
@@ -29,10 +30,12 @@ vi.mock("../src/services", () => ({
     },
   },
 }));
+vi.mock("../src/judgeAccounts", () => ({ signInJudge: mocks.judgeSignIn }));
 import AccountGate from "../src/components/AccountGate";
 let query: QueryClient;
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.judgeSignIn.mockResolvedValue(undefined);
   mocks.signupAvailable.mockResolvedValue(true);
   sessionStorage.clear();
   window.history.replaceState({}, "", "/");
@@ -58,7 +61,7 @@ describe("integrated account onboarding", () => {
     mocks.signupAvailable.mockResolvedValue(false);
     show();
     await screen.findByRole("button", { name: "Sign in" });
-    await screen.findByText(/Team testing is invite-only/);
+    await screen.findByText(/Access is invite-only/);
     expect(screen.queryByRole("button", { name: "Create a new account" }))
       .toBeNull();
   });
@@ -119,4 +122,24 @@ describe("integrated account onboarding", () => {
     await screen.findByText("Canvas auth-one workspace-one");
     expect(mocks.setActive).toHaveBeenCalledWith("workspace-one");
   });
+});
+
+it("uses the backend code flow from sign-up without password or registration calls",async()=>{
+ show();fireEvent.click(await screen.findByRole("button",{name:"Create a new account"}));
+ fireEvent.change(screen.getByLabelText("Judge/team code"),{target:{value:"private-test-code"}});
+ fireEvent.click(screen.getByRole("button",{name:"Continue as Employer"}));
+ await vi.waitFor(()=>expect(mocks.judgeSignIn).toHaveBeenCalledWith("employer","private-test-code"));
+ expect(mocks.signIn).not.toHaveBeenCalled();expect(mocks.signUp).not.toHaveBeenCalled();
+ expect((screen.getByLabelText("Judge/team code") as HTMLInputElement).value).toBe("");
+});
+it("shows invalid-code errors without opening a simulated account",async()=>{
+ mocks.judgeSignIn.mockRejectedValue(new Error("The judge/team code is incorrect."));show();
+ fireEvent.change(await screen.findByLabelText("Judge/team code"),{target:{value:"wrong-code"}});
+ fireEvent.click(screen.getByRole("button",{name:"Continue as Freelancer"}));
+ expect((await screen.findByRole("alert")).textContent).toBe("The judge/team code is incorrect.");
+ expect(screen.queryByText(/Canvas auth/)).toBeNull();
+});
+it("keeps email-bound invitations separate",async()=>{
+ window.history.replaceState({},"","/?join="+"a".repeat(64));show();await screen.findByRole("button",{name:"Sign in"});
+ expect(screen.queryByRole("button",{name:"Continue as Employer"})).toBeNull();
 });

@@ -1,12 +1,13 @@
-import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { CanvasLayout, WorkspaceSnapshot } from "../../shared/types";
-import { api, mode, mutateDemo } from "../services";
+import { useState } from "react";
 import { uid } from "../../shared/domain";
+import type { CanvasLayout,WorkspaceSnapshot } from "../../shared/types";
+import TeamMembers from "./TeamMembers";
 
 export default function StudioOrganization(
-  { snapshot: s, onSave }: {
+  { snapshot: s, onSave, onInvite }: {
     snapshot: WorkspaceSnapshot;
+    onInvite: () => void;
     onSave: (layout: CanvasLayout) => Promise<unknown>;
   },
 ) {
@@ -26,69 +27,11 @@ export default function StudioOrganization(
     }
   }
   return (
-    <details className="studio-organization">
-      <summary>People & saved role groups</summary>
-      <p className="fine-print">
-        Member roles organize the project hierarchy. Saved visual groups retain
-        your earlier team organization.
-      </p>
-      {s.people.filter((p) => p.accessRole === "worker").map((person) => (
-        <form
-          key={`${person.id}-${person.name}-${person.role}`}
-          className="field-grid"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const fields = new FormData(event.currentTarget),
-              name = String(fields.get("name")).trim(),
-              role = String(fields.get("role")).trim();
-            void run(async () => {
-              if (mode === "integrated") {
-                return api("members/update", { id: person.id, name, role });
-              }
-              mutateDemo((snapshot, actorId) => {
-                if (
-                  snapshot.people.find((p) => p.id === actorId)?.accessRole !==
-                    "employer"
-                ) {
-                  throw new Error("Employer access required.");
-                }
-                const member = snapshot.people.find((p) => p.id === person.id)!;
-                Object.assign(member, {
-                  name,
-                  role,
-                  initials: name.split(" ").map((s) => s[0]).slice(0, 2).join(
-                    "",
-                  ),
-                });
-              });
-            });
-          }}
-        >
-          <label>
-            Member name<input
-              name="name"
-              aria-label={`Name for ${person.name}`}
-              minLength={2}
-              maxLength={80}
-              required
-              defaultValue={person.name}
-            />
-          </label>
-          <label>
-            Role<input
-              name="role"
-              aria-label={`Role for ${person.name}`}
-              minLength={2}
-              maxLength={80}
-              required
-              defaultValue={person.role}
-            />
-          </label>
-          <button className="button secondary" disabled={busy}>
-            Save member
-          </button>
-        </form>
-      ))}
+    <section className="studio-organization">
+      <TeamMembers snapshot={s} onInvite={onInvite} />
+      <details>
+        <summary>Saved groups</summary>
+        <p className="fine-print">Organize existing members into visual groups.</p>
       {s.layout.groups.map((group) => (
         <div className="studio-saved-group" key={group.id}>
           <form
@@ -215,6 +158,7 @@ export default function StudioOrganization(
         </label>
       ))}
       {error && <p role="alert" className="error-message">{error}</p>}
-    </details>
+      </details>
+    </section>
   );
 }

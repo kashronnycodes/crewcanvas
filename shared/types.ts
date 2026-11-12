@@ -22,6 +22,8 @@ export interface Money {
   currency: "USD";
 }
 export interface Person {
+  /** Planning profile only; never an authenticated identity. */
+  sample?: boolean;
   id: string;
   authUserId?: string;
   name: string;
@@ -81,6 +83,7 @@ export interface BriefSuggestion {
   mode: "demo" | "live";
 }
 export interface Revision {
+  references?: { fileId: string; version: number }[];
   id: string;
   text: string;
   agreementId: string;
@@ -145,7 +148,7 @@ export interface Project {
   parentProjectId?: string;
   id: string;
   workspaceId: string;
-  workerId: string;
+  workerId: string | null;
   title: string;
   state: WorkState;
   origin: Origin;
@@ -157,7 +160,7 @@ export interface Project {
   invoices: Invoice[];
   activity: Activity[];
   version: number;
-  organization?: { collectionId: string; roleId: string };
+  organization?: { collectionId: string; roleId?: string };
 }
 export interface WorkflowCollection {
   id: string;
@@ -224,6 +227,7 @@ export interface FileVersion {
   createdAt: string;
 }
 export interface WorkspaceFile {
+  purpose?: "revision_reference";
   id: string;
   workspaceId: string;
   projectId: string | null;

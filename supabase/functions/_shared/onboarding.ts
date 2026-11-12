@@ -24,6 +24,8 @@ export function checked<T>(
       "WORKSPACE_ERROR",
       error.message.includes("FORBIDDEN")
         ? "This invitation or workspace is not available to your verified account."
+        : error.message.includes("CONFLICT: already a member")
+        ? "A member with this email already exists in this workspace."
         : "Workspace operation could not complete. Refresh before retrying.",
     );
   }

@@ -126,31 +126,13 @@ export function workflowGraph(
   options: { detailed?: boolean } = {},
 ): Hierarchy {
   if (options.detailed) return detailedWorkflowGraph(s, collection, open);
-  const rootId = `project:${collection.id}`, hubId = `roles:${collection.id}`;
+  const rootId = `project:${collection.id}`;
   const cards: HierarchyCard[] = [{
-    id: rootId,
-    kind: "project",
-    title: collection.title,
-    caption: "PROJECT / YOUR COLLABORATION SPACE",
-    x: 80,
-    y: 40,
-    onOpen: () => open("project", collection.id),
-  }, {
-    id: hubId,
-    kind: "roles",
-    title: "Project roles",
-    caption: `${collection.roles.length} roles · Choose who does what`,
-    x: 80,
-    y: 240,
-    onOpen: () => open("roles", collection.id),
+    id: rootId, kind: "project", title: collection.title,
+    caption: "Open project", x: 80 + Math.max(0, collection.roles.length - 1) * 160,
+    y: 40, onOpen: () => open("project", collection.id),
   }];
-  const edges: Hierarchy["edges"] = [{
-    id: `hierarchy:${rootId}:${hubId}`,
-    source: rootId,
-    target: hubId,
-    sourceHandle: "bottom",
-    targetHandle: "top",
-  }];
+  const edges: Hierarchy["edges"] = [];
   collection.roles.forEach((role, i) => {
     const id = `role:${role.id}`;
     cards.push({
@@ -159,18 +141,24 @@ export function workflowGraph(
       title: role.name,
       caption: `${role.members.length} member${
         role.members.length === 1 ? "" : "s"
-      } · View roster`,
-      x: 400 + i * 320,
+      }`,
+      x: 80 + i * 320,
       y: 240,
       onOpen: () => open("role", role.id),
     });
     edges.push({
-      id: `hierarchy:${hubId}:${id}`,
-      source: hubId,
+      id: `hierarchy:${rootId}:${id}`,
+      source: rootId,
       target: id,
-      sourceHandle: "top",
+      sourceHandle: "bottom",
       targetHandle: "top",
     });
+  });
+  collectionTasks(s, collection.id).filter(t => !t.workerId).forEach((task, i) => {
+    const id = `task:${task.id}`;
+    cards.push({ id, kind: "task", title: task.title, caption: "Unassigned", task,
+      x: 80 + (collection.roles.length + i) * 320, y: 240, onOpen: () => open("task", task.id) });
+    edges.push({id:`hierarchy:${rootId}:${id}`,source:rootId,target:id});
   });
   return {
     cards,
@@ -204,7 +192,7 @@ function detailedWorkflowGraph(
     id: `project:${collection.id}`,
     kind: "project",
     title: collection.title,
-    caption: "PROJECT / PEOPLE & WORK",
+    caption: "Open project",
     x: 80,
     y: 80,
   });
@@ -217,7 +205,7 @@ function detailedWorkflowGraph(
       title: role.name,
       caption: `${role.members.length} member${
         role.members.length === 1 ? "" : "s"
-      } · Open roster`,
+      }`,
       x: 400,
       y,
     }, `project:${collection.id}`);
@@ -262,6 +250,14 @@ function detailedWorkflowGraph(
     }
     y = Math.max(y + 170, memberY) + 40;
   }
+  const represented = new Set(cards.filter(c => c.task).map(c => c.task!.id));
+  for (const task of collectionTasks(s, collection.id).filter(t => !represented.has(t.id))) {
+    const person = s.people.find(p => p.id === task.workerId);
+    add({ id: `task:${task.id}`, kind: "task", title: task.title,
+      caption: person ? `${person.name}${person.sample ? " · Sample" : ""}` : "Unassigned",
+      task, person, x: 720, y }, `project:${collection.id}`);
+    y += 170;
+  }
   return {
     cards,
     edges,
@@ -269,18 +265,5 @@ function detailedWorkflowGraph(
     layoutKey: `${collection.id}:details:${
       collection.roles.map((r) => r.id).join(":")
     }`,
-  };
-}
-export function draftTaskCopy(p: Project) {
-  const a = visibleTerms(p);
-  return {
-    title: `${p.title} (copy)`.slice(0, 120),
-    brief: a?.brief ?? "",
-    deliverables: a?.deliverables ?? [],
-    tasks: a?.tasks ?? [],
-    amountMinor: a?.amountMinor ?? "0",
-    deadline: a?.deadline ?? "",
-    revisionRounds: a?.revisionRounds ?? 2,
-    paymentDays: a?.paymentDays ?? 7,
   };
 }

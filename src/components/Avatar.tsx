@@ -3,7 +3,7 @@ export default function Avatar({
   person,
   size = 48,
 }: {
-  person: Person;
+  person: Pick<Person,"id"|"name"|"color">;
   size?: number;
 }) {
   const index = parseInt(person.id.slice(-2), 10) || 1;

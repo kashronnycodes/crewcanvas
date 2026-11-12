@@ -1,24 +1,16 @@
-import type { Person, Project } from "../../shared/types";
 import { money } from "../../shared/domain";
 import { taskPayment } from "../../shared/studio";
-import { mode } from "../services";
-export default function PaymentOverview(
-  { project, person, employer, busy, onIssue }: {
+import type { Person,Project } from "../../shared/types";
+export default function PaymentOverview({ project, person, employer, busy, onIssue }: {
     project: Project;
-    person: Person;
+    person?: Person;
     employer: boolean;
     busy: boolean;
     onIssue: (id: string) => Promise<boolean>;
-  },
-) {
-  const f = taskPayment(project);
-  const sellerAvailable = mode === "demo" ||
-    project.origin === "sandbox" && person.connected;
-  return (
-    <section
-      className="task-payment-overview"
-      aria-label="Task payment responsibilities"
-    >
+}) {
+    const f = taskPayment(project);
+    const sellerAvailable = project.origin === "sandbox" && person?.connected;
+    return (<section className="task-payment-overview" aria-label="Task payment responsibilities">
       <div className="section-heading">
         <h3>Task payment</h3>
         <span className="pill">{f.status}</span>
@@ -28,8 +20,8 @@ export default function PaymentOverview(
           <dt>Agreed task price</dt>
           <dd>
             {project.activeAgreementId
-              ? money(f.base.toString())
-              : "Not accepted yet"}
+            ? money(f.base.toString())
+            : "Not accepted yet"}
           </dd>
         </div>
         <div>
@@ -48,45 +40,25 @@ export default function PaymentOverview(
       <p>Payment due date: {f.due ?? "Available after invoicing"}</p>
       <p>
         <strong>Next action:</strong> {f.canIssue && !sellerAvailable
-          ? "Employer & freelancer · configure an authorized Sandbox seller before invoicing"
-          : f.next}
+            ? "Employer & freelancer · configure an authorized Sandbox seller before invoicing"
+            : f.next}
       </p>
-      {mode === "demo"
-        ? <small>Simulated payment records · no money moves.</small>
-        : (
-          <small>
+      {(<small>
             {project.origin === "sample"
-              ? "Historical sample records"
-              : "PayPal Sandbox · test money"}
-          </small>
-        )}
+                ? "Historical sample records"
+                : "PayPal Sandbox · test money"}
+          </small>)}
       <div className="button-row">
         {!employer && f.canIssue &&
-          (mode === "demo" ||
-            project.origin === "sandbox" && person.connected) &&
-          (
-            <button
-              className="button primary"
-              disabled={busy}
-              onClick={() => void onIssue(project.id)}
-            >
-              {mode === "demo" ? "Issue simulated invoice" : "Issue invoice"}
-            </button>
-          )}
-        {employer && mode === "integrated" &&
-          f.payable.map((invoice) => (
-            <a
-              className="button primary"
-              key={invoice.id}
-              href={invoice.recipientUrl!}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            (project.origin === "sandbox" && person?.connected) &&
+            (<button className="button primary" disabled={busy} onClick={() => void onIssue(project.id)}>
+              {"Issue invoice"}
+            </button>)}
+        {employer &&
+            f.payable.map((invoice) => (<a className="button primary" key={invoice.id} href={invoice.recipientUrl!} target="_blank" rel="noopener noreferrer">
               Pay now · {invoice.number} · Sandbox
-            </a>
-          ))}
+            </a>))}
       </div>
       <small>Work approval and payment status are tracked separately.</small>
-    </section>
-  );
+    </section>);
 }

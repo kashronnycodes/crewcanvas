@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { seedWorkspace, IDS } from "../shared/seed";
-import { migrateDemoRoster } from "../src/demoRoster";
+import { migrateDemoRoster } from "./fixtures/roster";
 
 describe("demo roster update", () => {
   it("moves the four winners and Eya into separate groups while preserving projects", () => {

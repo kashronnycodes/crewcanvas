@@ -14,7 +14,7 @@ describe("public demo safety and useful fixtures", () => {
     expect(seed.projects[1].invoices[0].state).toBe("partial");
     expect(seed.projects[2].agreements[0].status).toBe("proposed");
     const peer = { id: seed.people[2].id, role: "worker" as const, workspaceId: seed.id };
-    expect(() => execute(seed.projects[0], { type: "discuss", projectId: seed.projects[0].id, text: "private" }, peer, { demo: true })).toThrow();
+    expect(() => execute(seed.projects[0], { type: "discuss", projectId: seed.projects[0].id, text: "private" }, peer)).toThrow();
   });
   it("refuses the current backend, mismatched URL, unconfirmed isolation and unrelated records", () => {
     const env = { CREW_DEMO_PROJECT_REF: "abcdefghijklmnopqrst", CREW_DEMO_SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co", CREW_DEMO_ISOLATION: "synthetic-only", PAYPAL_ENVIRONMENT: "sandbox", CREW_DEMO_SERVICE_ROLE_KEY: "server-only-test", CREW_DEMO_PASSWORD: "disposable-test-password" };

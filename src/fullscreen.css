@@ -1,0 +1,55 @@
+/* Fullscreen is a definite flex column. Normal page-sized board heights must
+   not constrain the surface inside it. Covers native and fixed fallback modes. */
+body .focus-canvas:is(.is-fullscreen, :fullscreen) {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100vw;
+  height: 100dvh;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+}
+body .focus-canvas:is(.is-fullscreen, :fullscreen) > :is(.project-board, .hierarchy-board, .canvas-container) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+}
+body .focus-canvas:is(.is-fullscreen, :fullscreen) > .project-board > .board-context {
+  position: relative;
+  flex: 0 0 auto;
+  inset: auto;
+  margin: 8px 56px 8px 10px;
+  min-width: 0;
+  max-width: none;
+}
+body .focus-canvas:is(.is-fullscreen, :fullscreen) > :is(.project-board, .hierarchy-board, .canvas-container) > .react-flow {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+/* React Flow's existing ResizeObserver measures the resized flex surface.
+   Do not remount or fit the viewport here: that would reset pan/zoom and edits. */
+
+/* A compact task context keeps the canvas prominent in both layouts. */
+body .project-board > .board-context { width:fit-content; align-self:flex-start; min-height:0; padding:6px 10px; gap:12px; max-width:calc(100% - 76px); }
+body .project-board > .board-context > div { gap:1px; min-width:0; }
+body .project-board > .board-context strong { font-size:12px; max-width:400px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+body .project-board > .board-context small { font-size:8px; }
+body .project-board > .board-context span { font-size:10px; }
+body .project-board > .board-context .button { min-height:28px; padding:5px 9px; font-size:11px; white-space:nowrap; }
+@media(max-width:600px){body .project-board > .board-context strong {max-width:160px;}body .project-board > .board-context {gap:8px;}}

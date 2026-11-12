@@ -287,3 +287,80 @@ describe.sequential("onboarding, tenant isolation and notifications", () => {
     await db.exec("reset role");
   });
 });
+
+describe.sequential("deliberate manual team setup", () => {
+  const manualId = uid(), authId = uid(), inviteHash = "f".repeat(64);
+  it("creates one manual person, retries safely and rejects blank and duplicate submissions", async () => {
+    await db.exec("reset role; set role service_role");
+    await db.query("select public.add_workspace_member($1,$2,'manual@example.com','Manual Person','Producer')", [ownerMember, manualId]);
+    await db.query("select public.add_workspace_member($1,$2,'manual@example.com','Manual Person','Producer')", [ownerMember, manualId]);
+    const rows = (await db.query<{auth_user_id:string|null;data:any}>("select * from public.memberships where id=$1", [manualId])).rows;
+    expect(rows).toHaveLength(1); expect(rows[0].auth_user_id).toBeNull(); expect(rows[0].data.authUserId).toBeUndefined();
+    await expect(db.query("select public.add_workspace_member($1,$2,'MANUAL@example.com','Other Person','Editor')", [ownerMember, uid()])).rejects.toThrow("CONFLICT");
+    await expect(db.query("select public.add_workspace_member($1,$2,'blank@example.com','  ','Editor')", [ownerMember, uid()])).rejects.toThrow("VALIDATION");
+    await expect(db.query("select public.add_workspace_member($1,$2,'bad-email','Person','Editor')", [ownerMember, uid()])).rejects.toThrow("VALIDATION");
+    await expect(db.query("select public.add_workspace_member($1,$2,'new@example.com','Person','Editor')", [workerMember, uid()])).rejects.toThrow("FORBIDDEN");
+  });
+  it("keeps the original member ID, role, profile and assignments when account access is accepted", async () => {
+    await db.exec("reset role");
+    await db.query("insert into auth.users values($1,'manual@example.com',now())", [authId]);
+    const assignedId = uid();
+    await db.query("insert into public.projects(id,workspace_id,worker_id,data) values($1,$2,$3,$4)", [assignedId,ws,manualId,{...project,id:assignedId,workerId:manualId}]);
+    await db.exec("set role service_role");
+    await db.query("select public.invite_workspace_member($1,$2,'manual@example.com','Invitation name','Invitation role',$3)", [ownerMember, uid(), inviteHash]);
+    await expect(db.query("select public.accept_workspace_invite($1,$2)", [outsider, inviteHash])).rejects.toThrow("FORBIDDEN");
+    await db.query("select public.accept_workspace_invite($1,$2)", [authId, inviteHash]);
+    await db.query("select public.accept_workspace_invite($1,$2)", [authId, inviteHash]);
+    const rows = (await db.query<{id:string;data:any}>("select * from public.memberships where auth_user_id=$1", [authId])).rows;
+    expect(rows).toHaveLength(1); expect(rows[0].id).toBe(manualId);
+    expect(rows[0].data).toMatchObject({name:"Manual Person",role:"Producer",authUserId:authId});
+    expect((await db.query<{worker_id:string}>("select worker_id from public.projects where id=$1",[assignedId])).rows[0].worker_id).toBe(manualId);
+    // The owner's access and other existing members remain intact.
+    expect((await db.query("select id from public.memberships where id=$1 and access_role='employer'", [ownerMember])).rows).toHaveLength(1);
+  });
+  it("does not expose the member creation RPC to a signed-in freelancer", async () => {
+    await asUser(worker);
+    await expect(db.query("select public.add_workspace_member($1,$2,'attempt@example.com','Person','Editor')", [ownerMember, uid()])).rejects.toThrow("permission denied");
+    await db.exec("reset role");
+  });
+});
+
+describe.sequential("sample planning profiles and unassigned tasks", () => {
+  const sampleId = uid();
+  let planning: Project;
+  it("seeds sample profiles idempotently with no Auth identity, only in the requested workspace", async () => {
+    await db.exec("reset role; set role service_role");
+    const first = await db.query<{add_sample_workspace_member:string}>("select public.add_sample_workspace_member($1,$2,'sample-designer','Sample Designer','Designer')", [ownerMember, sampleId]);
+    const retry = await db.query<{add_sample_workspace_member:string}>("select public.add_sample_workspace_member($1,$2,'sample-designer','Sample Designer','Designer')", [ownerMember, uid()]);
+    expect(first.rows[0].add_sample_workspace_member).toBe(sampleId);
+    expect(retry.rows[0].add_sample_workspace_member).toBe(sampleId);
+    const samples = (await db.query<{auth_user_id:null;data:any}>("select * from public.memberships where data->'sample'='true'::jsonb and workspace_id=$1", [ws])).rows;
+    expect(samples).toHaveLength(1); expect(samples[0].auth_user_id).toBeNull(); expect(samples[0].data.authUserId).toBeUndefined();
+    expect((await db.query("select id from public.memberships where workspace_id=$1 and data->'sample'='true'::jsonb",[other])).rows).toHaveLength(0);
+    await expect(db.query("update public.memberships set data=data||jsonb_build_object('authUserId',$2::text) where id=$1",[sampleId,worker])).rejects.toThrow("sample_members_have_no_account");
+  });
+  it("persists explicit null assignment, then assigns, changes and clears without rewriting existing tasks", async () => {
+    const existing = await db.query("select id,worker_id,data from public.projects where id=$1",[project.id]);
+    planning = {...project,id:uid(),workerId:null,title:"Plan before hiring",state:"awaiting_agreement",activeAgreementId:null,agreements:[],deliveries:[],revisions:[],proposals:[],invoices:[],activity:[],version:0};
+    await db.query("select public.commit_project($1,$2,-1,$3)",[ownerMember,planning,uid()]);
+    let saved = (await db.query<{worker_id:string|null;data:any}>("select worker_id,data from public.projects where id=$1",[planning.id])).rows[0];
+    expect(saved.worker_id).toBeNull(); expect(saved.data.workerId).toBeNull();
+    for (const assignee of [sampleId, workerMember, null]) {
+      const next=execute(planning,{type:"assignTask",projectId:planning.id,workerId:assignee},{id:ownerMember,workspaceId:ws,role:"employer"});
+      await db.query("select public.commit_project($1,$2,$3,$4)",[ownerMember,next,planning.version,uid()]);
+      planning=next;
+      saved=(await db.query<{worker_id:string|null;data:any}>("select worker_id,data from public.projects where id=$1",[planning.id])).rows[0];
+      expect(saved.worker_id).toBe(assignee); expect(saved.data.workerId).toBe(assignee);
+    }
+    expect((await db.query("select id,worker_id,data from public.projects where id=$1",[project.id])).rows).toEqual(existing.rows);
+  });
+  it("denies worker reads and even privileged-RPC writes to an unassigned task, and rejects invalid assignees", async () => {
+    await db.exec("reset role; set role service_role");
+    await expect(db.query("select public.commit_project($1,$2,$3,$4)",[workerMember,{...planning,version:planning.version+1},planning.version,uid()])).rejects.toThrow("FORBIDDEN");
+    await expect(db.query("select public.commit_project($1,$2,$3,$4)",[ownerMember,{...planning,workerId:ownerMember,version:planning.version+1},planning.version,uid()])).rejects.toThrow("invalid assignee");
+    await asUser(worker);
+    expect((await db.query("select id from public.projects where id=$1",[planning.id])).rows).toHaveLength(0);
+    await expect(db.query("select public.add_sample_workspace_member($1,$2,'fake','Sample','Editor')",[ownerMember,uid()])).rejects.toThrow("permission denied");
+    await db.exec("reset role");
+  });
+});

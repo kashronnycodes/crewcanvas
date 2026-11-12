@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { commandSchema, layoutSchema } from "../../../shared/validation.ts";
+import { commandSchema, invitationSchema, layoutSchema } from "../../../shared/validation.ts";
 import {
   assertProjectAccess,
   DomainError,
@@ -43,6 +43,15 @@ import {
   enforceRateLimit,
   enforceRequestLimit,
 } from "../_shared/rate-limit.ts";
+async function assignmentMember(id: string | null, workspaceId: string) {
+  if (!id) return null;
+  const { data, error } = await admin().from("memberships").select("data,auth_user_id")
+    .eq("id", id).eq("workspace_id", workspaceId).eq("access_role", "worker").single();
+  if (error || !data) throw new HttpError(403, "FORBIDDEN", "Choose a member of this workspace.");
+  if (data.data?.sample && data.auth_user_id) throw new HttpError(409, "CONFLICT", "Sample members cannot have account access.");
+  return data;
+}
+import {rosterSummaries} from "../_shared/member-roster.ts";
 const idBody = z.object({ projectId: z.uuid() }).strict();
 export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return respond(req, {});
@@ -61,6 +70,7 @@ export async function handler(req: Request): Promise<Response> {
     const setup = await onboarding(req, path, identity);
     if (setup) return setup;
     const user = await actor(req, identity);
+    if (req.method === "GET" && path === "roster/summaries") return respond(req,await rosterSummaries(user));
     if (req.method === "GET" && path === "snapshot") {
       return respond(req, await snapshot(user));
     }
@@ -97,6 +107,18 @@ export async function handler(req: Request): Promise<Response> {
       }
       z.object({}).strict().parse(input);
       return respond(req, await verifySandboxCredentials());
+    }
+    if (path === "members/create") {
+      if (user.role !== "employer") {
+        throw new HttpError(403, "FORBIDDEN", "Only the employer can manage team members.");
+      }
+      const value = invitationSchema.parse(input);
+      const id = z.uuid().parse(req.headers.get("Idempotency-Key"));
+      const memberId = checked(await admin().rpc("add_workspace_member", {
+        p_actor_id: user.id, p_id: id, p_email: value.email,
+        p_name: value.name, p_role: value.role,
+      }));
+      return respond(req, { memberId });
     }
     if (path === "members/update") {
       if (user.role !== "employer") {
@@ -180,12 +202,6 @@ export async function handler(req: Request): Promise<Response> {
     if (path === "command") {
       const command = commandSchema.parse(input);
       const requestId = z.uuid().parse(req.headers.get("Idempotency-Key"));
-      if (["simulateInvoice", "simulatePayment"].includes(command.type)) {
-        throw new DomainError(
-          "FORBIDDEN",
-          "Simulation commands are not available in integrated mode.",
-        );
-      }
       const prior = await providerStore("command_result", {
         requestId,
         actorId: user.id,
@@ -200,6 +216,7 @@ export async function handler(req: Request): Promise<Response> {
             "Only the employer can create projects.",
           );
         }
+        const assignee = await assignmentMember(command.workerId, user.workspaceId);
         const a = makeAgreement(command.terms, user.id, null);
         if (command.parentProjectId) {
           const parent = await loadProject(command.parentProjectId);
@@ -213,19 +230,17 @@ export async function handler(req: Request): Promise<Response> {
             "workspace_id",
             user.workspaceId,
           ).single();
-          const role = (layout.data?.data?.workflow as
-            | import("../../../shared/types.ts").WorkflowCollection[]
-            | undefined)?.find((c) =>
-              c.id === command.organization!.collectionId
-            )?.roles.find((r) => r.id === command.organization!.roleId);
-          if (layout.error || !role?.members.includes(command.workerId)) {
-            throw new DomainError(
-              "FORBIDDEN",
-              "Assign a member of this project role.",
-            );
+          const collections = layout.data?.data?.workflow as import("../../../shared/types.ts").WorkflowCollection[] | undefined;
+          const collection = collections?.find(c => c.id === command.organization!.collectionId);
+          const role = collection?.roles.find(r => r.id === command.organization!.roleId);
+          const implicitWorkspace = !collections?.length && command.organization.collectionId === user.workspaceId;
+          if (layout.error || (!collection && !implicitWorkspace) ||
+            (command.organization.roleId && !role && !implicitWorkspace) ||
+            (command.workerId && role && !role.members.includes(command.workerId))) {
+            throw new DomainError("FORBIDDEN", "Choose a project role in this workspace.");
           }
         }
-        a.status = command.publish ? "proposed" : "draft";
+        a.status = assignee?.auth_user_id && !assignee.data?.sample && command.publish ? "proposed" : "draft";
         const p: Project = {
           id: uid(),
           workspaceId: user.workspaceId,
@@ -245,7 +260,7 @@ export async function handler(req: Request): Promise<Response> {
             {
               id: uid(),
               actorId: user.id,
-              text: "Proposed a new project agreement.",
+              text: a.status === "proposed" ? "Proposed a new task agreement." : "Saved a planning task.",
               createdAt: new Date().toISOString(),
             },
           ],
@@ -254,14 +269,26 @@ export async function handler(req: Request): Promise<Response> {
         return respond(req, await commit(p, user, -1, requestId));
       }
       const p = await authorizedProject(command.projectId, user);
+      if (command.type === "assignTask") {
+        if (user.role !== "employer") throw new HttpError(403, "FORBIDDEN", "Only the employer can assign tasks.");
+        await assignmentMember(command.workerId, user.workspaceId);
+      }
       if (command.type === "submitFileDelivery") {
         const file = await authorizedFile(command.fileId, user);
-        if (file.projectId !== p.id || !file.versions[command.fileVersion]) {
+        if (file.purpose === "revision_reference" || file.projectId !== p.id || !file.versions[command.fileVersion]) {
           throw new HttpError(
             400,
             "VALIDATION",
             "Attach an existing file version to this project first.",
           );
+        }
+      }
+      if (command.type === "requestRevision") {
+        for (const reference of command.references ?? []) {
+          const file = await authorizedFile(reference.fileId, user);
+          if (file.projectId !== p.id || file.purpose !== "revision_reference" || !file.versions[reference.version]?.mime.startsWith("image/")) {
+            throw new HttpError(400, "VALIDATION", "Choose reference images uploaded to this task.");
+          }
         }
       }
       const changed = execute(p, command, user);

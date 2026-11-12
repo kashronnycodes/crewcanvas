@@ -1,43 +1,47 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Maximize2, Minimize2 } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+
 export default function FocusCanvas({ children }: { children: ReactNode }) {
   const target = useRef<HTMLDivElement>(null);
   const [full, setFull] = useState(false);
+  const exit = useCallback(async () => {
+    if (document.fullscreenElement === target.current) {
+      await document.exitFullscreen().catch(() => {});
+    }
+    setFull(!!target.current && document.fullscreenElement === target.current);
+  }, []);
+
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFull(false);
-    };
-    const sync = () => {
-      if (!document.fullscreenElement) setFull(false);
-    };
-    const exit = () => {
-      setFull(false);
-      if (document.fullscreenElement) {
-        void document.exitFullscreen().catch(() => {});
+      if (!event.defaultPrevented && event.key === "Escape" && target.current?.matches(".is-fullscreen, :fullscreen")) {
+        // Exit only this fullscreen surface, retaining surrounding dialogs/drafts.
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        void exit();
       }
     };
-    document.addEventListener("keydown", escape);
+    const sync = () => setFull(!!target.current && document.fullscreenElement === target.current);
+    const close = () => void exit();
+    document.addEventListener("keydown", escape, true);
     document.addEventListener("fullscreenchange", sync);
-    document.addEventListener("crewcanvas:exit-focus", exit);
+    document.addEventListener("crewcanvas:exit-focus", close);
     return () => {
-      document.removeEventListener("keydown", escape);
+      document.removeEventListener("keydown", escape, true);
       document.removeEventListener("fullscreenchange", sync);
-      document.removeEventListener("crewcanvas:exit-focus", exit);
+      document.removeEventListener("crewcanvas:exit-focus", close);
     };
-  }, []);
+  }, [exit]);
+
   async function toggle() {
-    if (full) {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen().catch(() => {});
-      }
-      setFull(false);
-    } else {
-      setFull(true);
-      await target.current?.requestFullscreen?.().catch(
-        () => {/* Fixed viewport fallback. */},
-      );
+    if (full) return exit();
+    setFull(true);
+    try {
+      await target.current?.requestFullscreen?.();
+    } catch {
+      // Keep the same mounted board in the fixed viewport fallback.
     }
   }
+
   return (
     <div ref={target} className={`focus-canvas ${full ? "is-fullscreen" : ""}`}>
       {children}
@@ -45,8 +49,7 @@ export default function FocusCanvas({ children }: { children: ReactNode }) {
         className="focus-toggle"
         aria-label={full ? "Exit fullscreen" : "Fullscreen canvas"}
         title={full ? "Exit fullscreen · Escape" : "Fullscreen canvas"}
-        onClick={() =>
-          void toggle()}
+        onClick={() => void toggle()}
       >
         {full ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
       </button>

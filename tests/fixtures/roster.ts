@@ -1,5 +1,5 @@
-import { IDS, seedWorkspace } from "../shared/seed";
-import type { WorkspaceSnapshot } from "../shared/types";
+import { IDS, seedWorkspace } from "../../shared/seed";
+import type { WorkspaceSnapshot } from "../../shared/types";
 
 const winnersId = "30000000-0000-4000-8000-000000000003";
 const psychologistId = "30000000-0000-4000-8000-000000000004";

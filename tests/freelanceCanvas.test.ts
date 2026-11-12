@@ -17,7 +17,7 @@ function fixture() {
     workspaceId: s.id,
   };
   const worker: SessionActor = {
-    id: p.workerId,
+    id: p.workerId!,
     role: "worker",
     workspaceId: s.id,
   };

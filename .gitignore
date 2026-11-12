@@ -16,3 +16,6 @@ supabase/.temp/
 *.tsbuildinfo
 .sites-runtime/
 .vercel
+
+# New verification artifacts can contain private task files and account context.
+docs/evidence/

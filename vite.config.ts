@@ -4,10 +4,6 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig(({ mode }) => ({
   resolve: mode === "test" ? { alias: { "npm:@supabase/supabase-js@2.80.0": "@supabase/supabase-js" } } : {},
   plugins: [react(), tailwindcss()],
-  // Regression tests are deterministic even when .env.local connects the developer to Supabase.
-  define: mode === "test"
-    ? { "import.meta.env.VITE_APP_MODE": JSON.stringify("demo") }
-    : {},
   test: {
     environment: "jsdom",
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],

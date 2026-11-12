@@ -1,92 +1,46 @@
 # CrewCanvas
 
-A visual workspace for creative teams: people, clear agreements, deliveries,
-thoughtful revisions, and payments in perspective.
+CrewCanvas connects projects, roles, members, and tasks with files, revisions, AI, and PayPal Sandbox payments.
 
-This workflow review branch uses **Project studio**, **Project whiteboard** and
-**Revisions**, with a shared **Project → Role → Member → Tasks** hierarchy.
-See the [workflow update, verification results and screenshots](docs/workflow-update.md).
-Use the branch's Vercel Preview with `/?demo=1` for labeled, browser-local UI
-review. The new backend commands are not deployed. Older milestone documents
-describe the preceding Work map interface.
+Owners manage work in **Project Studio**. Regular members land on **My Tasks**, which contains only their assignments. **Project Whiteboard** holds task-scoped notes and drawings without a second set of task controls. Clicking a member shows their name and project role. The workspace menu contains invitations, settings, help, and sign-out. See [task and member navigation](docs/member-navigation.md).
 
-[Open the live demo](https://crewcanvas.vercel.app) ·
-[GitHub repository](https://github.com/kashronnycodes/crewcanvas)
+Every account signs in through Supabase and uses the same database, storage, AI, and permissions. `?demo=1` and old build-mode flags cannot enable a simulator. Old browser records are left untouched but are not used as app data. Theme and workspace preferences, authentication sessions, and unsaved board recovery drafts still use browser storage.
 
-The deployed app runs in **demo mode**: AI and payments are simulated, and each
-browser keeps its own workspace and uploaded files. Sharing the link does not
-synchronize teammates' data. Live authentication, shared storage, AI, and PayPal
-Sandbox require the integrated setup below.
-
-CrewCanvas 2.0 adds persistent file cards, project/payment/revision nodes, contextual
-inspectors, meaningful connections, focus modes, financial flow, a workspace command
-bar and an activity timeline. See [the implementation handoff](docs/crewcanvas-2-handoff.md)
-for the migration, environment setup, actual test results and external verification gates.
+Read the [simplification report](docs/ui-simplification.md) for current verification and screenshots. Older dated reports describe previous releases.
 
 ## Run locally
 
 Requires Node.js 24 and npm.
 
 ```powershell
-git clone https://github.com/kashronnycodes/crewcanvas.git
-cd crewcanvas
 npm ci
+Copy-Item .env.example .env.local
+# Set VITE_SUPABASE_PUBLISHABLE_KEY for the configured project.
 npm run dev
 ```
 
-Open the printed local URL. No external accounts are needed in the default demo.
-The banner explicitly identifies deterministic AI and simulated payments.
-Changes persist in this browser; Reset Demo restores the Northstar fixtures.
-The demo role selector is a presentation aid, not authentication.
-
-## Features
-
-- React Flow whiteboard with movable people, curved connections, collapsible
-  role groups, renaming, membership controls, zoom, fit, and persistent layout.
-- Canvas/list views, search, mobile list, and worker/project details drawer.
-- Versioned agreements; original accepted terms remain read-only and visible
-  in history. Changes require the other party's acceptance.
-- Google Drive/Docs link submissions with labels and a delivery review cycle.
-- Advisory AI scope comparisons, included work, clarification, extra-work
-  proposals, manual pricing, zero-price waivers, rebasing, and project comments.
-- Independent completion/payment indicators and unique project aggregation.
-- Real Supabase/AI/PayPal integration code, separate from local simulation.
+A Supabase URL and browser publishable key are required. Sign in with an existing account, or create an account if registration is enabled. Missing configuration or unavailable integrations show errors. Payments remain in their configured Sandbox environment.
 
 ## Architecture
 
 ```text
-React UI → typed repository / scope assistant / payment gateway
-                 ├─ demo: browser-local state + deterministic responses
-                 └─ integrated: authenticated Supabase Edge API
-                      ├─ PostgreSQL: project entities, immutable terms, audit
-                      ├─ Gemini: validated structured suggestions (OpenAI rollback available)
-                      └─ PayPal Sandbox: invoices, verified events, reconciliation
+React UI → authenticated Supabase API
+             ├─ PostgreSQL: memberships, assignments, terms, revisions and invoices
+             ├─ Private storage: versioned files with authorized signed URLs
+             ├─ Configured AI provider: real suggestions, no simulated fallback
+             └─ PayPal Sandbox: verified invoices, events and reconciliation
 ```
 
-`src/` contains UI and adapters. `shared/` contains domain contracts, validation,
-money/status helpers and fixtures. `supabase/` contains the migration and backend.
-The frontend is a Vite static build; it needs no Node server after deployment.
+Accepted terms and financial history retain their original IDs. Role labels organize work; backend membership and task assignments control access. No account or record migration is needed for the interface update.
 
-Projects, agreements, deliveries, revision requests, proposals, invoices and
-activity are separate database records. Their JSON payloads implement shared
-TypeScript contracts; critical ownership, identity, version and monetary fields
-also have relational constraints. Writes commit atomically through a server-only
-RPC with optimistic project versions. Accepted agreement and activity records
-have database immutability triggers.
-
-The layout is a separate record. Group positions are world coordinates; member
-positions are relative to their group. Collapsing retains every member. Moving
-or regrouping cannot alter memberships, project assignments or seller identity.
-
-## Enable the integrated build
+## Configure the backend
 
 The verified backend is **CrewCanvas_HACKATHON** (`tsnwowlyrlxpwwetmxns`) in the
 `ronnybraces` organization. Do not create another project or use a Picklaro project.
 See [the backend integration handoff](docs/backend-integration.md) for actual
 verification, applied migrations, environment separation, and remaining provider gates.
 
-1. Copy `.env.example` to `.env.local`; set `VITE_APP_MODE=integrated` and the
-   project's browser publishable key. The URL is already included in the example.
+1. Copy `.env.example` to `.env.local`; set the project's browser publishable key. The URL is already included in the example.
 2. Run `npm ci` and `npm run dev`. Sign up, confirm the email, then sign in.
 3. Create a workspace, invite the intended freelancer by email, and manually share
    the generated invitation link. Existing accounts can accept the same flow.
@@ -111,7 +65,7 @@ An invitation grants a worker membership, never an employer role. Memberships ar
 workspace-specific, so the same account can belong to multiple workspaces.
 
 Every API call verifies the actual Auth user and current database membership.
-Workers cannot read peers, modify the canvas, accept their own delivery or
+Workers cannot read peers’ task data, change project organization, approve their own delivery or
 approve their own fees. Row policies enforce read isolation, direct client writes
 are revoked, and transactional/provider RPCs are granted only to the server role.
 Browser role claims and user-editable metadata never authorize actions.
@@ -226,7 +180,7 @@ complete reliable integration.
 - Extra work changes the total only after employer acceptance. Zero-price waivers
   retain history. Stale proposals need worker rebasing before employer approval.
 - Sample histories, real sandbox invoices and local simulations have visible
-  labels. Reset affects only the local demo, never external invoice history.
+  labels. Existing sample financial history remains labeled separately from verified PayPal records.
 
 ## Tests and release
 
@@ -250,19 +204,6 @@ See `docs/release-checklist.md` for the external release gates and four-develope
 handoff. A local build does not demonstrate configured authentication, a real
 model call, or a completed PayPal sandbox payment.
 
-## Six-minute demo
-
-1. Myron shows Northstar, collapses/moves a group, refreshes, and restores it.
-2. Show Leo's independent accepted-work and overdue-payment indicators.
-3. Create a new Launch Teaser for Ava; extract/edit tasks; propose $120 terms.
-4. Ava accepts in her own session and submits a shared Drive link marked v1.
-5. Myron requests a spelling correction and second ending; show AI scope evidence.
-6. Ava includes the correction, proposes $30 extra; Myron accepts. Total: $150.
-7. Ava submits v2; Myron accepts. Work completes while payment is outstanding.
-8. Ava issues the sandbox invoice; Myron pays on PayPal's hosted sandbox page.
-9. Show verified reconciliation, zero balance, invoice reference, and acceptance
-   remaining intact. In the local demo these last actions are explicitly simulated.
-
 ## Official references
 
 - [React Flow grouping](https://reactflow.dev/learn/layouting/sub-flows)
@@ -275,10 +216,6 @@ model call, or a completed PayPal sandbox payment.
 - [PayPal partner dependency](https://developer.paypal.com/platforms/invoicing/integrate)
 - [Invoice event semantics](https://developer.paypal.com/platforms/invoicing/reference/invoicing-webhooks/)
 - [Webhook signature verification](https://developer.paypal.com/api/rest/webhooks/rest/)
-# Public demo accounts
+## Existing accounts
 
-The sign-in page offers three one-click simulated demo accounts. See [setup, isolation and deployment instructions](docs/public-demo-accounts.md) and [verification results](docs/public-demo-verification.md).
-
-## API rate limiting
-
-See [rate-limit policies, migration and deployment instructions](docs/api-rate-limiting.md) and [verification results](docs/api-rate-limiting-verification.md).
+Existing test and demo accounts use normal sign-in and backend permissions. The sign-in page offers code-protected Employer and Freelancer access to the two fixed payment-tested integration accounts. The backend validates the private code and establishes normal authenticated sessions. There is no role impersonation, simulated AI, local record repository, or simulated payment action. See [judge access setup](docs/judge-access.md).

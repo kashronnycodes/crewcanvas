@@ -1,7 +1,7 @@
+import { ExternalLink,Plus } from "lucide-react";
 import { useState } from "react";
-import { ExternalLink, Plus } from "lucide-react";
-import type { Delivery, Project, WorkspaceSnapshot } from "../../shared/types";
 import { newBoardData } from "../../shared/board";
+import type { Delivery,Project,WorkspaceSnapshot } from "../../shared/types";
 import { boardService } from "../boardService";
 import { FilePreview } from "./WorkspaceFiles";
 
@@ -81,7 +81,7 @@ export default function DeliverablePreview(
           <p className="muted">
             {d.fileId
               ? "This file version is unavailable. Ask the uploader for access."
-              : "External deliverable · open the original to review this version."}
+              : "Open the original file to review this version."}
           </p>
         )}
       {!d.fileId && (

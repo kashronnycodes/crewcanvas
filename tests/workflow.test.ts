@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { IDS, seedWorkspace } from "../shared/seed";
 import { activeAgreement, execute, uid } from "../shared/domain";
 import {
-  draftTaskCopy,
   visibleWorkflow,
   workflowCollections,
   workflowGraph,
@@ -45,10 +44,11 @@ function submitted(): Project {
   return p;
 }
 describe("project organization without permission escalation", () => {
-  it("keeps the reference overview compact, with a project, roles hub and horizontal peer roles", () => {
+  it("keeps the reference overview compact, with a project connected directly to horizontal peer roles", () => {
     const s = seedWorkspace(), c = workflowCollections(s)[0];
     const graph = workflowGraph(s, c, () => {});
-    expect(graph.cards.filter((card) => card.kind === "roles")).toHaveLength(1);
+    expect(graph.cards.filter((card) => card.kind === "project")).toHaveLength(1);
+    expect(graph.cards.filter((card) => card.kind === "roles")).toHaveLength(0);
     expect(graph.cards.filter((card) => card.kind === "role")).toHaveLength(
       c.roles.length,
     );
@@ -116,22 +116,7 @@ describe("project organization without permission escalation", () => {
     layout.workflow[0].roles.push(layout.workflow[0].roles[0]);
     expect(() => validateCanvas(s, layout)).toThrow(/Duplicate role/);
   });
-  it("copies draft content without copying any financial, approval, revision or delivery identity", () => {
-    const p = submitted(), copy = draftTaskCopy(p);
-    expect(copy.title).toContain("(copy)");
-    expect(copy.brief).toBe(activeAgreement(p)!.brief);
-    for (
-      const key of [
-        "id",
-        "invoices",
-        "revisions",
-        "proposals",
-        "deliveries",
-        "acceptedAt",
-        "activeAgreementId",
-      ]
-    ) expect(copy).not.toHaveProperty(key);
-  });
+
 });
 describe("versioned revisions and mutual fee negotiation", () => {
   it("keeps separate free requests tied to their reviewed delivery without changing settlement", () => {

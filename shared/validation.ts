@@ -72,15 +72,16 @@ export const deliverableUrlSchema = z.url().max(2000).refine((value) => {
   }
 }, "Use an HTTPS deliverable link without embedded credentials.");
 export const commandSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("assignTask"), projectId: id, workerId: id.nullable() }).strict(),
   z
     .object({
       type: z.literal("createProject"),
       parentProjectId: id.optional(),
-      workerId: id,
+      workerId: id.nullable().default(null),
       title: z.string().trim().min(2).max(120),
       terms: termsSchema,
       publish: z.boolean().default(true),
-      organization: z.object({ collectionId: id, roleId: id }).strict()
+      organization: z.object({ collectionId: id, roleId: id.optional() }).strict()
         .optional(),
     })
     .strict(),
@@ -128,6 +129,7 @@ export const commandSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("requestRevision"),
+      references: z.array(z.object({fileId: id, version: z.number().int().min(0)}).strict()).max(10).refine(items => new Set(items.map(i => i.fileId)).size === items.length, "Choose each image once.").optional(),
       projectId: id,
       text: z.string().min(3).max(10000),
       items: z.array(scopeItemSchema).min(1).max(20),
@@ -188,15 +190,7 @@ export const commandSchema = z.discriminatedUnion("type", [
       text: z.string().trim().min(1).max(3000),
     })
     .strict(),
-  z.object({ type: z.literal("simulateInvoice"), projectId: id }).strict(),
-  z
-    .object({
-      type: z.literal("simulatePayment"),
-      projectId: id,
-      invoiceId: id,
-      state: z.enum(["pending", "partial", "paid", "failed"]),
-    })
-    .strict(),
+
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export const layoutSchema = z

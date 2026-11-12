@@ -15,6 +15,8 @@ import "./studio.css";
 import "./workflow.css";
 import "./reference.css";
 import "./studio-workflow.css";
+import "./simplify.css";
+import "./fullscreen.css";
 import { applyTheme, initialTheme } from "./theme";
 import { retryQuery } from "../shared/http-errors";
 applyTheme(initialTheme());

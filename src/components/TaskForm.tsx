@@ -15,17 +15,18 @@ export default function TaskForm(
   },
 ) {
   const workers = snapshot.people.filter((p) => p.accessRole === "worker");
-  const [assignee, setAssignee] = useState(workerId ?? workers[0]?.id ?? "");
+  const [assignee, setAssignee] = useState(workerId ?? "");
   const [projectId, setProjectId] = useState(parentProjectId ?? "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const person = workers.find((p) => p.id === (workerId ?? assignee));
+  const person = workers.find((p) => p.id === assignee);
+  const planning = !person || !!person.sample;
   return (
     <Modal
       title="Add task"
-      description={workerId
-        ? `Assigned to ${person?.name} · ${person?.role}`
-        : "Choose a workspace member and propose the work."}
+      description={person
+        ? `${person.name}${person.sample ? " · Sample planning profile" : " · " + person.role}`
+        : "Save now and assign a workspace member later."}
       onClose={onClose}
     >
       <form
@@ -39,7 +40,7 @@ export default function TaskForm(
             const title = String(fields.get("title")).trim();
             const ok = await onSubmit({
               type: "createProject",
-              workerId: workerId ?? assignee,
+              workerId: assignee || null,
               ...(projectId ? { parentProjectId: projectId } : {}),
               title,
               publish: true,
@@ -66,45 +67,16 @@ export default function TaskForm(
         }}
       >
         <button type="button" className="text-button" onClick={onClose}>
-          ← Back{workerId ? ` to ${person?.name}'s tasks` : " to workspace"}
+          ← Back{workerId ? ` to ${workers.find(p => p.id === workerId)?.name ?? "member"}'s tasks` : " to workspace"}
         </button>
-        {workerId
-          ? (
-            <div className="info-note">
-              <strong>Assigned to {person?.name}</strong>
-              <span>· {person?.role}</span>
-            </div>
-          )
-          : (
-            <>
-              <label>
-                Assigned member<select
-                  aria-label="Assigned member"
-                  value={assignee}
-                  onChange={(e) => setAssignee(e.target.value)}
-                  required
-                >
-                  {workers.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name} · {p.role}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Project<select
-                  aria-label="Project"
-                  value={projectId}
-                  onChange={(e) => setProjectId(e.target.value)}
-                >
-                  <option value="">New standalone project</option>
-                  {studioProjects(snapshot).filter((p) =>
-                    snapshot.projects.some((t) => t.id === p.id)
-                  ).map((p) => (
-                    <option key={p.id} value={p.id}>{p.title}</option>
-                  ))}
-                </select>
-              </label>
-            </>
-          )}
+        <label>Assigned member<select aria-label="Assigned member" value={assignee} onChange={e => setAssignee(e.target.value)}>
+          <option value="">Unassigned</option>
+          {workers.map(p => <option key={p.id} value={p.id}>{p.name}{p.sample ? " · Sample" : ""} · {p.role}</option>)}
+        </select></label>
+        <label>Project<select aria-label="Project" value={projectId} onChange={e => setProjectId(e.target.value)}>
+          <option value="">New standalone project</option>
+          {studioProjects(snapshot).filter(p => snapshot.projects.some(t => t.id === p.id)).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+        </select></label>
         <label>
           Task title<input
             name="title"
@@ -169,12 +141,12 @@ export default function TaskForm(
             defaultValue="awaiting_agreement"
           >
             <option value="awaiting_agreement">
-              Awaiting scope & price acceptance
+              {planning ? "Planning" : "Awaiting scope & price acceptance"}
             </option>
           </select>
         </label>
         <p className="fine-print">
-          The member must accept the proposed scope, price and due date before
+          Real teammates must accept the proposed scope, price and due date before
           work begins. Acceptance does not mark work approved or paid.
         </p>
         {error && <p role="alert" className="error-message">{error}</p>}
@@ -182,7 +154,7 @@ export default function TaskForm(
           <button type="button" className="button secondary" onClick={onClose}>
             Cancel
           </button>
-          <button className="button primary" disabled={busy || !person}>
+          <button className="button primary" disabled={busy}>
             Save task
           </button>
         </div>

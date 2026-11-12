@@ -147,7 +147,7 @@ export function canvasEntities(s: WorkspaceSnapshot) {
       entities.set(`${kind}:${p.id}`, {
         kind,
         projectId: p.id,
-        personId: p.workerId,
+        personId: p.workerId ?? undefined,
       });
     }
     for (const d of p.deliveries) {
@@ -257,19 +257,17 @@ export function inferIntent(text: string): WorkspaceIntent {
 export function answerWorkspace(
   s: WorkspaceSnapshot,
   intent: WorkspaceIntent,
-  mode: "live" | "demo",
+  mode: "live",
   now = new Date(),
 ): WorkspaceAnswer {
   const today = todayIn(s.timezone, now), highlight: string[] = [];
-  const source = mode === "demo"
-    ? "Local sample records"
-    : "Authorized workspace records";
+  const source = "Authorized workspace records";
   let text =
     "Ask about payments, today’s progress, overdue work, monthly spending, or organizing the canvas. I cannot move money or approve work.";
   if (intent === "payments") {
     const pending = s.projects.filter((p) => projectFinance(p).awaiting > 0n);
     pending.forEach((p) =>
-      highlight.push(p.workerId, `task:${p.id}`, `payment:${p.id}`)
+      highlight.push(...(p.workerId ? [p.workerId] : []), `task:${p.id}`, `payment:${p.id}`)
     );
     text = `${source}: ${
       money(
@@ -282,7 +280,7 @@ export function answerWorkspace(
       const a = activeAgreement(p);
       return a && a.deadline < today && p.state !== "accepted";
     });
-    overdue.forEach((p) => highlight.push(`task:${p.id}`, p.workerId));
+    overdue.forEach((p) => highlight.push(`task:${p.id}`, ...(p.workerId ? [p.workerId] : [])));
     text = `${source}: ${overdue.length} overdue projects${
       overdue.length
         ? ": " + overdue.map((p) =>
@@ -315,9 +313,7 @@ export function answerWorkspace(
     } projects await review.`;
   } else if (intent === "spending") {
     // syncedAt is NOT settlement time. Never misattribute an old payment to this month.
-    text = mode === "demo"
-      ? "Sample invoice balances are not verified monthly spending. Monthly spending requires timestamped provider transactions."
-      : "Monthly spending is calculated from verified PayPal transaction records by the server.";
+    text = "Monthly spending is calculated from verified PayPal transaction records by the server.";
   } else if (intent === "organize") {
     text =
       "Suggested layout: projects → work → deliverables → payments. Apply layout to arrange these cards; people and file contents stay intact.";

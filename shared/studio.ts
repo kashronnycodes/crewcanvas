@@ -94,6 +94,8 @@ export function taskPayment(p: Project) {
     ? `${
       proposal.authorId === p.workerId ? "Employer" : "Freelancer"
     } · accept or counter the revision price`
+    : !p.workerId
+    ? "Employer · assign a member when ready"
     : p.state === "awaiting_agreement"
     ? p.agreements.some((a) => a.status === "proposed")
       ? "Freelancer · review proposed scope and price"

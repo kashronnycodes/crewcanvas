@@ -24,15 +24,6 @@ it.each(["modal-content", "workflow-panel"])(
     await waitFor(() => expect(result.current.route).toEqual(member));
     expect(panel.scrollTop).toBe(184);
     act(() => result.current.back());
-    await waitFor(() =>
-      expect(result.current.route).toEqual({
-        projectId: "project",
-        role: "Editor",
-      })
-    );
-    act(() => result.current.back());
-    await waitFor(() =>
-      expect(result.current.route).toEqual({ projectId: "project" })
-    );
+    await waitFor(()=>expect(result.current.route).toEqual({}));
   },
 );

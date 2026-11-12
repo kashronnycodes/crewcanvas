@@ -1,3 +1,5 @@
+vi.mock("../src/services", () => import("./fixtures/testRepository"));
+vi.mock("../src/components/AccountGate", () => ({ default: ({ children }: { children: (a: string, w: string, c: () => void) => unknown }) => children("fixture-auth", "fixture-workspace", () => {}) }));
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -7,7 +9,7 @@ import {
   repository,
   resetDemo,
   setDemoActor,
-} from "../src/services";
+} from "./fixtures/testRepository";
 import { IDS } from "../shared/seed";
 vi.mock(
   "../src/components/WorkflowCanvas",
@@ -50,6 +52,7 @@ it("submits an uploaded file without requiring a Google Drive URL", async () => 
       updatedAt: new Date().toISOString(),
     }];
   });
+  setDemoActor(IDS.ava);
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -58,19 +61,10 @@ it("submits an uploaded file without requiring a Google Drive URL", async () => 
       <App />
     </QueryClientProvider>,
   );
-  const role = await screen.findByRole("combobox", {
-    name: "Demo viewing role",
-  });
-  fireEvent.change(role, { target: { value: IDS.ava } });
-  fireEvent.click(await screen.findByRole("button", { name: "Task list" }));
-  const snapshot = await repository.load(), person = snapshot.people[0];
-  fireEvent.click(
-    await screen.findByRole("button", { name: `Open member ${person.name}` }),
-  );
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Task details →" }),
-  );
-  fireEvent.click(await screen.findByRole("tab", { name: "Deliverables" }));
+  await screen.findByRole("heading",{name:"My Tasks"});
+  const snapshot=await repository.load();
+  fireEvent.click(await screen.findByRole("button",{name:snapshot.projects[0].title}));
+  await screen.findByRole("region", {name:"Files and previews"});
   fireEvent.change(
     screen.getByRole("combobox", { name: "Project file" }),
     { target: { value: fileId } },

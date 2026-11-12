@@ -9,7 +9,7 @@ export default function Modal({
   wide = false,
 }: {
   title: string;
-  description: string;
+  description?: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
@@ -18,11 +18,17 @@ export default function Modal({
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="modal-overlay" />
-        <Dialog.Content className={`modal-content ${wide ? "wide" : ""}`}>
+        <Dialog.Content onEscapeKeyDown={event => {
+          if (document.querySelector(".focus-canvas:is(.is-fullscreen, :fullscreen)")) {
+            event.preventDefault();
+            event.stopPropagation();
+            document.dispatchEvent(new Event("crewcanvas:exit-focus"));
+          }
+        }} {...(!description ? { "aria-describedby": undefined } : {})} className={`modal-content ${wide ? "wide" : ""}`}>
           <div className="modal-heading">
             <div>
               <Dialog.Title>{title}</Dialog.Title>
-              <Dialog.Description>{description}</Dialog.Description>
+              {description && <Dialog.Description>{description}</Dialog.Description>}
             </div>
             <Dialog.Close className="icon-button" aria-label="Close dialog">
               <X size={20} />

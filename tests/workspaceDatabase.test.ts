@@ -11,7 +11,7 @@ const file: WorkspaceFile = {
   id: uid(),
   workspaceId: s.id,
   projectId: s.projects[0].id,
-  uploadedBy: s.projects[0].workerId,
+  uploadedBy: s.projects[0].workerId!,
   name: "work.pdf",
   mime: "application/pdf",
   size: 100,
@@ -57,6 +57,7 @@ beforeAll(async () => {
     const migration of [
       "20261028110143_initial_schema.sql",
       "20261030210134_intelligent_canvas.sql",
+      "20261111205343_revision_reference_images.sql",
     ]
   ) {
     await db.exec(
@@ -215,5 +216,46 @@ describe.sequential("private files and workspace audit migration", () => {
         JSON.stringify({ ...delivery, id: uid() }),
       ]),
     ).rejects.toThrow();
+  });
+});
+
+describe.sequential("private revision reference images", () => {
+  async function asUser(index:number) {
+    await db.exec("reset role");
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)",[authIds[index]]);
+    await db.exec("set role authenticated");
+  }
+  const refId=uid(), revisionId=uid(), project=s.projects[0];
+  const reference:WorkspaceFile={...file,id:refId,uploadedBy:IDS.myron,purpose:"revision_reference",name:"Color guide.png",mime:"image/png",version:1,versions:[{...file.versions[0],path:"private/reference.png",name:"Color guide.png",mime:"image/png"}]};
+  it("persists reference versions on the correct revision without creating a delivery", async () => {
+    await db.exec("reset role;set role service_role");
+    await db.query("select public.mutate_workspace_file($1,$2,0,false)",[IDS.myron,reference]);
+    const before=(await db.query("select id from public.deliveries where project_id=$1",[project.id])).rows;
+    const data={id:revisionId,text:"Use this color guide",references:[{fileId:refId,version:0}]};
+    await db.query("insert into public.revisions(id,project_id,data) values($1,$2,$3)",[revisionId,project.id,data]);
+    expect((await db.query<{data:any}>("select data from public.revisions where id=$1",[revisionId])).rows[0].data).toEqual(data);
+    expect((await db.query("select id from public.deliveries where project_id=$1",[project.id])).rows).toEqual(before);
+  });
+  it("rejects references from a different task, invalid versions and ordinary files", async () => {
+    for(const [taskId,references] of [[s.projects[1].id,[{fileId:refId,version:0}]],[project.id,[{fileId:refId,version:99}]],[project.id,[{fileId:file.id,version:0}]]]) {
+      const id=uid();await expect(db.query("insert into public.revisions(id,project_id,data) values($1,$2,$3)",[id,taskId,{id,references}])).rejects.toThrow("valid task reference image");
+    }
+    await expect(db.query("update public.revisions set data=data||jsonb_build_object('references','[]'::jsonb) where id=$1",[revisionId])).rejects.toThrow("immutable");
+  });
+  it("retains linked reference evidence and refuses to treat it as completed work", async () => {
+    await expect(db.query("select public.mutate_workspace_file($1,$2,1,true)",[IDS.myron,{...reference,version:2}])).rejects.toThrow("retained");
+    await expect(db.query("select public.mutate_workspace_file($1,$2,1,false)",[IDS.myron,{...reference,projectId:s.projects[1].id,version:2}])).rejects.toThrow("retained");
+    const id=uid();await expect(db.query("insert into public.deliveries(id,project_id,data) values($1,$2,$3)",[id,project.id,{id,fileId:refId,fileVersion:0}])).rejects.toThrow("not deliverables");
+    await expect(db.query("select public.mutate_workspace_file($1,$2,1,false)",[IDS.myron,{...reference,purpose:undefined,version:2}])).rejects.toThrow("purpose is immutable");
+  });
+  it("enforces the existing owner and assigned-worker boundary on files and revision metadata", async () => {
+    const outsider=s.people.findIndex(p=>p.accessRole==="worker"&&p.id!==project.workerId);
+    await asUser(outsider);
+    expect((await db.query("select id from public.workspace_files where id=$1",[refId])).rows).toHaveLength(0);
+    expect((await db.query("select id from public.revisions where id=$1",[revisionId])).rows).toHaveLength(0);
+    await asUser(s.people.findIndex(p=>p.id===project.workerId));
+    expect((await db.query("select id from public.workspace_files where id=$1",[refId])).rows).toHaveLength(1);
+    expect((await db.query("select id from public.revisions where id=$1",[revisionId])).rows).toHaveLength(1);
+    await db.exec("reset role");
   });
 });

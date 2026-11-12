@@ -49,6 +49,7 @@ export async function handler(req: Request): Promise<Response> {
     ) {
       try {
         const p = await loadProject(projectId);
+        if (!p.workerId) throw new Error("An unassigned planning task cannot have a provider invoice.");
         await reconcileProject(p.id, {
           id: p.workerId,
           role: "worker",

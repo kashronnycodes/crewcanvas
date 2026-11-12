@@ -1,5 +1,6 @@
+import { execute } from "./fixtures/simulation";
 import { describe, expect, it } from "vitest";
-import { activeAgreement, execute, uid } from "../shared/domain";
+import { activeAgreement, uid } from "../shared/domain";
 import { IDS, seedWorkspace } from "../shared/seed";
 import { normalizeInvoice } from "../shared/paypal-state";
 const employer = {

@@ -141,3 +141,56 @@ describe("actual Edge handler admission and provider ordering", () => {
     expect(m.rpc.mock.calls.filter(c => c[0] === "provider_store" && c[1].p_action === "ai_allow")).toHaveLength(1);
   });
 });
+
+describe("manual member API authorization", () => {
+  const member = {name:"Taylor Brooks",email:"taylor@example.com",role:"Producer"};
+  it("only creates a member after a valid authenticated owner submission", async () => {
+    expect((await handler(request("members/create", member))).status).toBe(200);
+    expect(m.rpc).toHaveBeenCalledWith("add_workspace_member", {
+      p_actor_id:m.actor,p_id:"70000000-0000-4000-8000-000000000001",p_name:member.name,p_email:member.email,p_role:member.role,
+    });
+  });
+  it.each(["members/create", "members/update"])("denies worker writes to %s", async path => {
+    m.role="worker";
+    expect((await handler(request(path, member))).status).toBe(403);
+    expect(m.rpc.mock.calls.some(call=>call[0]==="add_workspace_member")).toBe(false);
+  });
+  it.each([{...member,name:"  "},{...member,role:" "},{...member,email:"invalid"},{...member,accessRole:"employer"}])("rejects invalid or privileged fields before writing", async value => {
+    expect((await handler(request("members/create", value))).status).toBe(400);
+    expect(m.rpc.mock.calls.some(call=>call[0]==="add_workspace_member")).toBe(false);
+  });
+  it("denies anonymous creation", async () => {
+    expect((await handler(request("members/create",member,{authenticated:false}))).status).toBe(401);
+    expect(m.rpc).not.toHaveBeenCalled();
+  });
+});
+
+describe("unassigned task API", () => {
+  function commandAdmission() {
+    m.rpc.mockImplementation(async (name, args) => ({data:name==="provider_store" && args.p_action==="command_result" ? null : {allowed:true,retryAfter:0},error:null}));
+  }
+  it("creates an explicit unassigned planning task through the actual handler", async () => {
+    commandAdmission();
+    const commit = vi.spyOn(backend,"commit").mockResolvedValue({ok:true});
+    const {brief,deliverables,amountMinor,currency,deadline,revisionRounds,paymentDays}=seedWorkspace().projects[0].agreements[0];
+    const response=await handler(request("command",{type:"createProject",title:"Plan before hiring",workerId:null,terms:{brief,deliverables,amountMinor,currency,deadline,revisionRounds,paymentDays}}));
+    expect(response.status).toBe(200);
+    expect(commit).toHaveBeenCalledWith(expect.objectContaining({workerId:null,agreements:[expect.objectContaining({status:"draft"})]}),expect.anything(),-1,expect.any(String));
+  });
+  it("clears a planning assignment through the owner-only handler", async () => {
+    commandAdmission();
+    const p={...seedWorkspace().projects[0],activeAgreementId:null,agreements:[],deliveries:[],invoices:[],revisions:[],proposals:[]};
+    vi.spyOn(backend,"authorizedProject").mockResolvedValue(p);
+    const commit=vi.spyOn(backend,"commit").mockResolvedValue({ok:true});
+    expect((await handler(request("command",{type:"assignTask",projectId:p.id,workerId:null}))).status).toBe(200);
+    expect(commit).toHaveBeenCalledWith(expect.objectContaining({workerId:null}),expect.anything(),p.version,expect.any(String));
+    m.role="worker";
+    expect((await handler(request("command",{type:"assignTask",projectId:p.id,workerId:null}))).status).toBe(403);
+  });
+});
+
+it("denies regular member calls to the retired peer task-list endpoint",async()=>{
+ m.role="worker";
+ const response=await handler(request("roster/summaries",undefined,{method:"GET"}));
+ expect(response.status).toBe(403);expect(await response.text()).not.toContain("tasks");
+});

@@ -50,7 +50,7 @@ describe("workspace files, relationships and financial facts", () => {
       cards: [{ id: `task:${s.projects[0].id}`, x: -25, y: 300, width: 300 }],
       connections: [{
         id: uid(),
-        source: s.projects[0].workerId,
+        source: s.projects[0].workerId!,
         target: `task:${s.projects[0].id}`,
       }],
     };
@@ -77,8 +77,8 @@ describe("workspace files, relationships and financial facts", () => {
     expect(connectionMeaning(s, `task:${a.id}`, `payment:${a.id}`))
       .toBeTruthy();
     expect(connectionMeaning(s, `task:${a.id}`, `payment:${b.id}`)).toBeNull();
-    expect(connectionMeaning(s, b.workerId, `task:${a.id}`)).toBeNull();
-    expect(connectionMeaning(s, `project:${a.id}`, a.workerId)).toBe(
+    expect(connectionMeaning(s, b.workerId!, `task:${a.id}`)).toBeNull();
+    expect(connectionMeaning(s, `project:${a.id}`, a.workerId!)).toBe(
       "Project freelancer",
     );
   });
@@ -116,17 +116,17 @@ describe("workspace files, relationships and financial facts", () => {
     );
   });
   it("answers against actual records, highlights nodes and refuses to invent monthly spending", () => {
-    const s = seedWorkspace(), answer = answerWorkspace(s, "payments", "demo");
-    expect(answer.text).toContain("Local sample records");
+    const s = seedWorkspace(), answer = answerWorkspace(s, "payments", "live");
+    expect(answer.text).toContain("Authorized workspace records");
     expect(answer.highlight.length).toBeGreaterThan(0);
-    expect(answerWorkspace(s, "spending", "demo").text).toContain(
-      "not verified monthly spending",
+    expect(answerWorkspace(s, "spending", "live").text).toContain(
+      "verified PayPal transaction records",
     );
     expect(inferIntent("How much have I spent this month?")).toBe("spending");
-    expect(answerWorkspace({ ...s, projects: [] }, "progress", "demo").text)
+    expect(answerWorkspace({ ...s, projects: [] }, "progress", "live").text)
       .toContain("No project activity recorded today");
     expect(
-      answerWorkspace(s, "overdue", "demo", new Date("2026-12-01T00:00:00Z"))
+      answerWorkspace(s, "overdue", "live", new Date("2026-12-01T00:00:00Z"))
         .highlight.length,
     ).toBeGreaterThan(0);
   });
@@ -141,7 +141,7 @@ describe("workspace files, relationships and financial facts", () => {
       note: "A persisted deliverable",
     };
     const submitted = execute(p, command, {
-      id: p.workerId,
+      id: p.workerId!,
       role: "worker",
       workspaceId: s.id,
     });
@@ -156,7 +156,7 @@ describe("workspace files, relationships and financial facts", () => {
         type: "acceptDelivery",
         projectId: p.id,
         deliveryId: submitted.deliveries.at(-1)!.id,
-      }, { id: p.workerId, role: "worker", workspaceId: s.id })
+      }, { id: p.workerId!, role: "worker", workspaceId: s.id })
     ).toThrow();
     const accepted = execute(submitted, {
       type: "acceptDelivery",

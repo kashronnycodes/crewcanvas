@@ -1,48 +1,48 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Background,
-  BackgroundVariant,
-  ConnectionMode,
-  type Node,
-  type NodeChange,
-  type NodeProps,
-  ReactFlow,
-  ReactFlowProvider,
-  useNodesInitialized,
-  useReactFlow,
+Background,
+BackgroundVariant,
+ConnectionMode,
+type Node,
+type NodeChange,
+type NodeProps,
+ReactFlow,
+ReactFlowProvider,
+useNodesInitialized,
+useReactFlow,
 } from "@xyflow/react";
-import {
-  AlertCircle,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Expand,
-  Hand,
-  Minus,
-  MoreHorizontal,
-  MousePointer2,
-  Pencil,
-  Plus,
-  Users,
-  X,
-} from "lucide-react";
 import "@xyflow/react/dist/style.css";
-import type {
-  CanvasLayout,
-  Person,
-  Project,
-  WorkspaceSnapshot,
-} from "../../shared/types";
-import { indicators, reparent, todayIn, uid } from "../../shared/domain";
-import Avatar from "./Avatar";
-import { FourWayHandles, smartEdgeTypes } from "./SmartEdge";
-import type { ProjectTab } from "../../shared/freelance-canvas";
-import type { Command } from "../../shared/validation";
 import {
-  useWorkspaceCanvas,
-  WorkCard,
-  type WorkCardData,
+AlertCircle,
+Check,
+ChevronDown,
+ChevronUp,
+Expand,
+Hand,
+Minus,
+MoreHorizontal,
+MousePointer2,
+Pencil,
+Plus,
+Users,
+X,
+} from "lucide-react";
+import { useCallback,useEffect,useMemo,useRef,useState } from "react";
+import { indicators,reparent,todayIn,uid } from "../../shared/domain";
+import type { ProjectTab } from "../../shared/freelance-canvas";
+import type {
+CanvasLayout,
+Person,
+Project,
+WorkspaceSnapshot,
+} from "../../shared/types";
+import type { Command } from "../../shared/validation";
+import Avatar from "./Avatar";
+import {
+useWorkspaceCanvas,
+WorkCard,
+type WorkCardData,
 } from "./IntelligentCanvas";
+import { FourWayHandles,smartEdgeTypes } from "./SmartEdge";
 type Filter = "all" | "attention" | "completed";
 type MapData = {
   work?: WorkCardData;
@@ -200,7 +200,7 @@ function GroupNode({ data }: NodeProps<MapNode>) {
                 <Avatar key={p.id} person={p} size={40} />
               ))}
             </div>
-            <span>{data.people.length} creative minds</span>
+            <span>{data.people.length} members</span>
           </button>
           <div className="group-footer">
             <span>View team</span>
@@ -248,7 +248,8 @@ function Map({
   selectedPersonId?: string;
 }) {
   const [layout, setLayout] = useState(snapshot.layout);
-  const [pan, setPan] = useState(false);
+  const [pan, setPan] = useState(true);
+  useEffect(() => setPan(true), [snapshot.id]);
   const [groupEditor, setGroupEditor] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [addOpen, setAddOpen] = useState(false);
@@ -588,6 +589,7 @@ function Map({
         minZoom={0.2}
         maxZoom={1.8}
         panOnDrag={pan ? true : [1, 2]}
+        nodesDraggable={!pan}
         selectionOnDrag={!pan}
         nodesConnectable
         deleteKeyCode={null}
@@ -602,7 +604,7 @@ function Map({
       </ReactFlow>
       {workspace.ui}
       <div className="canvas-hint">
-        <span className="live-dot" /> Your team, connected{" "}
+        <span className="live-dot" /> Work map{" "}
         <span>Drag to make it yours</span>
       </div>
       <div className="canvas-tools">
@@ -709,7 +711,7 @@ function Map({
           <div>
             <h3>
               {groupEditor === "new"
-                ? "A place for your people"
+                ? "Create group"
                 : "Rename role group"}
             </h3>
             <p>Groups organize your canvas. Access stays the same.</p>
@@ -772,7 +774,7 @@ function Map({
             </button>
             <h3>
               {groupMembers === "all"
-                ? "A place for everyone"
+                ? "Add members"
                 : layout.groups.find((g) => g.id === groupMembers)?.name}
             </h3>
             <p>

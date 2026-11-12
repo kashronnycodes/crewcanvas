@@ -58,12 +58,12 @@ async function workspace(page: Page) {
   });
   await page.goto("http://127.0.0.1:3201/");
   await expect(
-    page.getByRole("button", { name: "Project studio", exact: true }),
+    page.getByRole("button", { name: "Project Studio", exact: true }),
   ).toBeVisible();
 }
 test("AI throttling displays retry guidance and restores the action", async ({ page }) => {
   await workspace(page);
-  await page.getByText("✦ Workspace AI · progress, payments and next steps", {
+  await page.getByText("Ask AI", {
     exact: true,
   }).click();
   await page.getByLabel("Workspace AI question", { exact: true }).fill(

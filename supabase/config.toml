@@ -21,3 +21,7 @@ import_map = './functions/deno.json'
 [functions.reconcile]
 verify_jwt = false
 import_map = './functions/deno.json'
+
+[functions.judge-team-access]
+verify_jwt = false
+import_map = './functions/deno.json'

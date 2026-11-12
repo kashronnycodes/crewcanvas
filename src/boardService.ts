@@ -1,33 +1,12 @@
 import {
-  type BoardData,
-  boardDataSchema,
-  type BoardObject,
+type BoardData,
+boardDataSchema,
+type BoardObject,
 } from "../shared/board";
-import { mode, repository, supabase } from "./services";
-import { publicDemo } from "./demoSession";
-const boardKey = (id: string) => `${publicDemo ? "crewcanvas.public-demo.board." : "crewcanvas.board."}${id}`;
-
-async function assertDemoAccess(projectId: string) {
-  if (!(await repository.load()).projects.some((p) => p.id === projectId)) {
-    throw new Error("This project is not assigned to your account.");
-  }
-}
-
-function demoRows(projectId: string): BoardObject[] {
-  try {
-    return JSON.parse(
-      localStorage.getItem(boardKey(projectId)) ?? "[]",
-    );
-  } catch {
-    return [];
-  }
-}
+import { supabase } from "./services";
 export const boardService = {
   async load(projectId: string): Promise<BoardObject[]> {
-    if (mode === "demo") {
-      await assertDemoAccess(projectId);
-      return demoRows(projectId);
-    }
+    if (!supabase) throw new Error("Cannot open the board. Connect CrewCanvas to Supabase and try again.");
     const { data, error } = await supabase!.from("board_objects").select("*")
       .eq("project_id", projectId).order("updated_at");
     if (error) {
@@ -52,30 +31,7 @@ export const boardService = {
     const data = boardDataSchema.parse(
       deleted ? { ...value, fileId: null, fileVersion: null } : value,
     );
-    if (mode === "demo") {
-      await assertDemoAccess(projectId);
-      const rows = demoRows(projectId), old = rows.find((row) => row.id === id);
-      if ((old?.version ?? 0) !== expected) {
-        throw new Error(
-          "This object changed. Review the current version before retrying.",
-        );
-      }
-      const row: BoardObject = {
-        id,
-        project_id: projectId,
-        author_id: "demo",
-        updated_by: "demo",
-        version: expected + 1,
-        deleted,
-        data,
-        updated_at: new Date().toISOString(),
-      };
-      localStorage.setItem(
-        boardKey(projectId),
-        JSON.stringify([...rows.filter((row) => row.id !== id), row]),
-      );
-      return row;
-    }
+    if (!supabase) throw new Error("Cannot save the board. Connect CrewCanvas to Supabase and try again.");
     const result = expected === 0
       ? await supabase!.from("board_objects").insert({
         id,

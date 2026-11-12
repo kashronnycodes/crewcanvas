@@ -11,9 +11,7 @@ export interface StudioRoute {
 }
 export function parentRoute(route: StudioRoute): StudioRoute {
   if (route.form) return route.memberId ? { ...route, form: undefined } : {};
-  if (route.tools || route.taskId) {
-    return { ...route, tools: undefined, taskId: undefined };
-  }
+  if (route.tools || route.taskId) return {};
   if (route.memberId) return { projectId: route.projectId, role: route.role };
   if (route.role) return { projectId: route.projectId };
   return {};
@@ -60,28 +58,11 @@ export function useStudioNavigation(workspaceId: string) {
   function open(next: StudioRoute) {
     if (routeKey(next) === routeKey(current.current)) return;
     remember();
-    const ancestors: StudioRoute[] = [];
-    if (next.projectId) ancestors.push({ projectId: next.projectId });
-    if (next.role) {
-      ancestors.push({ projectId: next.projectId, role: next.role });
-    }
-    if (next.memberId) {
-      ancestors.push({
-        projectId: next.projectId,
-        role: next.role,
-        memberId: next.memberId,
-      });
-    }
-    if (next.taskId || next.form || next.tools) ancestors.push(next);
-    const currentKey = routeKey(current.current);
-    const index = ancestors.findIndex((r) => routeKey(r) === currentKey);
-    for (const destination of ancestors.slice(index + 1)) {
-      depth.current++;
-      history.pushState({
-        ...history.state,
-        crewStudio: { workspaceId, route: destination, depth: depth.current },
-      }, "");
-    }
+    depth.current++;
+    history.pushState({
+      ...history.state,
+      crewStudio: {workspaceId,route:next,depth:depth.current},
+    }, "");
     setRoute(next);
   }
   function back() {

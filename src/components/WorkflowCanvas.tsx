@@ -1,34 +1,32 @@
-import { useEffect, useMemo, useState } from "react";
+import { Controls } from "@xyflow/react";
 import {
-  Background,
-  type Node,
-  type NodeProps,
-  ReactFlow,
-  ReactFlowProvider,
+Background,
+type Node,
+type NodeProps,
+ReactFlow,
+ReactFlowProvider,
 } from "@xyflow/react";
-import { ArrowLeft, ArrowRight, Plus, Users, X } from "lucide-react";
+import { ArrowLeft,ArrowRight,Plus,X } from "lucide-react";
+import { useEffect,useMemo,useState } from "react";
 import type {
-  CanvasLayout,
-  Project,
-  WorkflowCollection,
-  WorkspaceSnapshot,
+CanvasLayout,
+WorkflowCollection,
+WorkspaceSnapshot,
 } from "../../shared/types";
 import type { Command } from "../../shared/validation";
 import {
-  collectionTasks,
-  draftTaskCopy,
-  type HierarchyCard,
-  workflowCollections,
-  workflowGraph,
+collectionTasks,
+type HierarchyCard,
+workflowCollections,
+workflowGraph,
 } from "../../shared/workflow";
 import type { StudioRoute } from "../studioNavigation";
-import { taskLabels } from "../../shared/studio";
-import { Board } from "./ProjectBoard";
-import ProjectForm from "./ProjectForm";
 import Avatar from "./Avatar";
-import Modal from "./Modal";
 import FocusCanvas from "./FocusCanvas";
 import HierarchyCardView from "./HierarchyCard";
+import Modal from "./Modal";
+import { Board } from "./ProjectBoard";
+import ProjectForm from "./ProjectForm";
 
 function Tile({ data }: NodeProps<Node<{ card: HierarchyCard }>>) {
   return <HierarchyCardView card={data.card} />;
@@ -80,6 +78,8 @@ export default function WorkflowCanvas(
       collections.find((c) => c.id === collectionId) ??
       collections[0];
   const tasks = collectionTasks(s, collection.id);
+  const [emptyPan, setEmptyPan] = useState(true);
+  useEffect(() => setEmptyPan(true), [collection.id]);
   const [activeId, setActiveId] = useState("");
   const active = tasks.find((p) => p.id === activeId) ?? tasks[0];
   const routeRole = collection.roles.find((r) =>
@@ -102,9 +102,11 @@ export default function WorkflowCanvas(
       roleId: string;
       memberId?: string;
       memberSpecific?: boolean;
-      draft?: ReturnType<typeof draftTaskCopy>;
     } | null
   >(null);
+  useEffect(() => {
+    if (navigation.route.form && !taskForm) setTaskForm({roleId:routeRole?.id ?? "",memberId:navigation.route.memberId,memberSpecific:!!navigation.route.memberId});
+  }, [navigation.route.form, navigation.route.memberId, routeRole?.id]);
   const [dialog, setDialog] = useState<"project" | "role" | "member" | null>(
     null,
   );
@@ -120,7 +122,6 @@ export default function WorkflowCanvas(
   const [detailed, setDetailed] = useState(detailedByDefault);
   useEffect(() => setDetailed(detailedByDefault), [detailedByDefault]);
   const role = collection.roles.find((r) => r.id === panel?.roleId);
-  const member = s.people.find((p) => p.id === panel?.memberId);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
       if (
@@ -148,21 +149,15 @@ export default function WorkflowCanvas(
   async function addTask(
     member?: string,
     requestedRole?: string,
-    copy?: Project,
   ) {
     document.dispatchEvent(new Event("crewcanvas:exit-focus"));
     const r = collection.roles.find((r) => r.id === requestedRole) ??
       collection.roles.find((r) => r.members.length);
-    if (!r?.members.length) {
-      notify("Add a freelancer to a role before assigning a task.");
-      return;
-    }
     if (!s.layout.workflow && !await save(collections)) return;
     setTaskForm({
-      roleId: r.id,
+      roleId: r?.id ?? "",
       memberId: member,
       memberSpecific: !!member,
-      draft: copy ? draftTaskCopy(copy) : undefined,
     });
     navigation.open({ ...navigation.route, form: true });
   }
@@ -174,7 +169,7 @@ export default function WorkflowCanvas(
       navigation.open({ projectId: collection.id, role: id });
     } else if (kind === "member") {
       const [roleId, memberId] = id.split(":");
-      navigation.open({ projectId: collection.id, role: roleId, memberId });
+      navigation.open({projectId:collection.id,role:roleId,memberId});
     } else {
       const task = tasks.find((t) => t.id === id);
       const role = collection.roles.find((r) =>
@@ -182,14 +177,13 @@ export default function WorkflowCanvas(
           ? r.id === task.organization.roleId
           : r.members.includes(task?.workerId ?? "")
       );
-      if (task && role) {
-        setActiveId(id);
+      if (task) {
         navigation.open({
           projectId: collection.id,
-          role: role.id,
-          memberId: task.workerId,
+          role: role?.id,
+          memberId: task.workerId ?? undefined,
           taskId: id,
-          tab: "deliverables",
+          tab: "overview",
         });
       }
     }
@@ -210,10 +204,6 @@ export default function WorkflowCanvas(
       aria-label="Project collaboration studio"
     >
       <header className="workflow-heading">
-        <div>
-          <span className="eyebrow">PROJECT / ROLES / PEOPLE / WORK</span>
-          <h2>A place for every moving part.</h2>
-        </div>
         <div className="button-row">
           <label>
             Project<select
@@ -238,7 +228,7 @@ export default function WorkflowCanvas(
                   setDialog("project");
                 }}
               >
-                <Plus size={14} /> New board project
+                <Plus size={14} /> New project
               </button>
               <button
                 className="button secondary"
@@ -268,11 +258,6 @@ export default function WorkflowCanvas(
         ))}
       </nav>
       <div className="workflow-scope">
-        <span>
-          <Users size={14} /> {collection.roles.length} roles · {tasks.length}
-          {" "}
-          tasks · Automatically arranged
-        </span>
         <button
           className="text-button map-detail-toggle"
           aria-pressed={detailed}
@@ -282,7 +267,7 @@ export default function WorkflowCanvas(
         </button>
         {active && (
           <label>
-            Whiteboard notes for<select
+            Notes for task<select
               aria-label="Task whiteboard"
               value={active.id}
               onChange={(e) => setActiveId(e.target.value)}
@@ -295,8 +280,7 @@ export default function WorkflowCanvas(
         )}
       </div>
       <p className="workflow-permission">
-        Task details, files and annotations are private to their client and
-        assigned freelancer. Role labels never change access.
+        Only the client and the hired freelancer can see task details, files, and notes.
       </p>
       {active
         ? (
@@ -308,9 +292,6 @@ export default function WorkflowCanvas(
                 projectId={active.id}
                 hierarchy={graph}
                 onAddTask={employer ? () => void addTask() : undefined}
-                onDuplicateTask={employer
-                  ? (p) => void addTask(p.workerId, p.organization?.roleId, p)
-                  : undefined}
                 openProject={() => open("task", active.id)}
                 notify={notify}
               />
@@ -333,16 +314,23 @@ export default function WorkflowCanvas(
               nodeTypes={tileTypes}
               fitView
               fitViewOptions={{ maxZoom: 1, padding: .2 }}
+              panOnDrag={emptyPan ? true : [1, 2]}
+              selectionOnDrag={!emptyPan}
               nodesDraggable={false}
               nodesConnectable={false}
               deleteKeyCode={null}
               proOptions={{ hideAttribution: true }}
             >
               <Background gap={24} />
+              <Controls showInteractive={false} />
             </ReactFlow>
+            <div className="board-toolbar" aria-label="Whiteboard tools">
+              <button aria-label="Pan" aria-pressed={emptyPan} onClick={() => setEmptyPan(true)}>Pan</button>
+              <button aria-label="Select" aria-pressed={!emptyPan} onClick={() => setEmptyPan(false)}>Select</button>
+            </div>
             <div className="workflow-first-task">
               <p>
-                Add members to a role, then create your first task. Whiteboard
+                Create a task now and assign someone when ready. Whiteboard
                 tools become available with a task.
               </p>
               {employer && (
@@ -373,7 +361,7 @@ export default function WorkflowCanvas(
           </button>
           <h2>{collection.title}</h2>
           <p className="muted">
-            Choose a role to see its members and assigned work.
+            Choose a role to see its members.
           </p>
           {collection.roles.map((r) => (
             <button
@@ -402,133 +390,18 @@ export default function WorkflowCanvas(
         </aside>
       )}
       {panel && role && !detailsOpen && !navigation.route.form && (
-        <aside
-          className="workflow-panel"
-          aria-label={panel.memberId ? "Member tasks" : "Role roster"}
-        >
-          <div className="section-heading">
-            <span className="eyebrow">
-              {panel.memberId ? "MEMBER / ASSIGNED WORK" : "ROLE / ROSTER"}
-            </span>
-            <button aria-label="Close roster" onClick={() => setPanel(null)}>
-              <X size={18} />
-            </button>
+        <aside className="workflow-panel" aria-label="Role roster">
+          <div className="section-heading"><span className="eyebrow">ROLE / ROSTER</span><button aria-label="Close roster" onClick={()=>setPanel(null)}><X size={18}/></button></div>
+          <button className="text-button" onClick={navigation.back}>← Back</button>
+          <h2>{role.name}</h2><p className="muted">Select a member for their project information.</p>
+          <div className="roster-grid">
+            {role.members.map(id=>s.people.find(p=>p.id===id)).filter(p=>!!p).map(p=><button className="roster-member" key={p.id} onClick={()=>navigation.open({projectId:collection.id,role:role.id,memberId:p.id})}>
+              <Avatar person={p} size={60}/><span><strong>{p.name}{p.sample&&<small className="sample-member-label">Sample</small>}</strong><small>{role.name}</small></span>
+            </button>)}
+            {employer&&<button className="roster-add" aria-label="+ Add member" onClick={()=>{setMemberId("");setDialog("member");}}><span><Plus size={24}/></span><strong>Add member</strong></button>}
           </div>
-          {member
-            ? (
-              <div className="member-identity">
-                <button
-                  className="text-button"
-                  onClick={navigation.back}
-                >
-                  <ArrowLeft size={15} /> Back to role roster
-                </button>
-                <Avatar person={member} size={64} />
-                <h2>{member.name}</h2>
-              </div>
-            )
-            : (
-              <>
-                <button className="text-button" onClick={navigation.back}>
-                  ← Back to project roles
-                </button>
-                <span className="context-step">01 / PEOPLE</span>
-                <h2>{role.name}</h2>
-                <p className="muted">Select a member to see their work.</p>
-              </>
-            )}
-          {panel.memberId
-            ? (
-              <>
-                <p className="muted">{collection.title} · {role.name}</p>
-                {tasks.filter((p) =>
-                  `${p.title} ${p.agreements.at(-1)?.brief ?? ""}`.toLowerCase()
-                    .includes(search.toLowerCase()) &&
-                  p.workerId === panel.memberId &&
-                  (!p.organization || p.organization.roleId === role.id)
-                ).map((p) => (
-                  <article className="member-task" key={p.id}>
-                    <button onClick={() => open("task", p.id)}>
-                      <strong>{p.title}</strong>
-                      <ArrowRight size={15} />
-                    </button>
-                    <p>
-                      <span className={`pill work-${p.state}`}>
-                        {taskLabels[p.state]}
-                      </span>
-                    </p>
-                    {employer && (
-                      <button
-                        className="text-button"
-                        onClick={() => void addTask(p.workerId, role.id, p)}
-                      >
-                        Duplicate as draft
-                      </button>
-                    )}
-                  </article>
-                ))}
-                {employer && (
-                  <button
-                    className="button primary"
-                    onClick={() => void addTask(panel.memberId, role.id)}
-                  >
-                    + Add task
-                  </button>
-                )}
-              </>
-            )
-            : (
-              <>
-                <div className="roster-grid">
-                  {role.members.map((id) => s.people.find((p) => p.id === id))
-                    .filter((p) => !!p).map((p) => (
-                      <button
-                        className="roster-member"
-                        key={p.id}
-                        onClick={() =>
-                          setPanel({ roleId: role.id, memberId: p.id })}
-                      >
-                        <Avatar person={p} size={60} />
-                        <span>
-                          <strong>{p.name}</strong>
-                          <small>{role.name}</small>
-                        </span>
-                      </button>
-                    ))}
-                  {employer && (
-                    <button
-                      className="roster-add"
-                      aria-label="+ Add member"
-                      onClick={() => {
-                        setMemberId("");
-                        setDialog("member");
-                      }}
-                    >
-                      <span>
-                        <Plus size={24} />
-                      </span>
-                      <strong>Add member</strong>
-                    </button>
-                  )}
-                </div>
-                {!role.members.length && (
-                  <p className="muted">
-                    No members yet. Add someone from your workspace or invite a
-                    freelancer.
-                  </p>
-                )}
-                {employer && (
-                  <>
-                    <button
-                      className="button secondary"
-                      onClick={() => onInvite(role.name)}
-                    >
-                      Invite new member
-                    </button>
-                  </>
-                )}
-              </>
-            )}
+          {!role.members.length&&<p className="muted">No members yet.</p>}
+          {employer&&<button className="button secondary" onClick={()=>onInvite(role.name)}>Invite new member</button>}
         </aside>
       )}
       {dialog && (
@@ -551,9 +424,7 @@ export default function WorkflowCanvas(
                 next = [...collections, {
                   id,
                   title: name.trim(),
-                  roles: ["Editor", "Thumbnail Designer", "Scriptwriter"].map(
-                    (name) => ({ id: crypto.randomUUID(), name, members: [] }),
-                  ),
+                  roles: [],
                 }];
                 if (await save(next)) {
                   setCollectionId(id);
@@ -610,7 +481,7 @@ export default function WorkflowCanvas(
                     {s.people.filter((p) =>
                       p.accessRole === "worker" && !role?.members.includes(p.id)
                     ).map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
+                      <option key={p.id} value={p.id}>{p.name}{p.sample ? " · Sample" : ""}</option>
                     ))}
                   </select>
                 </label>

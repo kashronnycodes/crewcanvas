@@ -1,17 +1,18 @@
 import {
-  Background,
-  Controls,
-  type Edge,
-  Handle,
-  type Node,
-  type NodeProps,
-  Position,
-  ReactFlow,
+Background,
+Controls,
+type Edge,
+Handle,
+type Node,
+type NodeProps,
+Position,
+ReactFlow,
 } from "@xyflow/react";
-import { studioProjects, taskLabels } from "../../shared/studio";
+import { useEffect, useState } from "react";
+import { studioProjects,taskLabels } from "../../shared/studio";
 import type { WorkspaceSnapshot } from "../../shared/types";
-import FocusCanvas from "./FocusCanvas";
 import type { StudioRoute } from "../studioNavigation";
+import FocusCanvas from "./FocusCanvas";
 
 type Card = Node<
   { title: string; label: string; state?: string; open: () => void }
@@ -41,6 +42,8 @@ export default function HierarchyBoard(
     onOpen: (route: StudioRoute) => void;
   },
 ) {
+  const [pan, setPan] = useState(true);
+  useEffect(() => setPan(true), [snapshot.id]);
   const nodes: Card[] = [], edges: Edge[] = [];
   let row = 0;
   function card(
@@ -138,6 +141,7 @@ export default function HierarchyBoard(
         className="hierarchy-board"
         aria-label="Project hierarchy whiteboard"
       >
+<div className="board-toolbar"><button aria-label="Pan" aria-pressed={pan} onClick={() => setPan(true)}>Pan</button><button aria-label="Select" aria-pressed={!pan} onClick={() => setPan(false)}>Select</button></div>
         {nodes.length
           ? (
             <ReactFlow
@@ -149,6 +153,8 @@ export default function HierarchyBoard(
               minZoom={0.2}
               maxZoom={1.5}
               nodesConnectable={false}
+              panOnDrag={pan ? true : [1, 2]}
+              selectionOnDrag={!pan}
               nodesDraggable={false}
               edgesFocusable={false}
               proOptions={{ hideAttribution: true }}

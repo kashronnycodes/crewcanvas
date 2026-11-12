@@ -4,7 +4,7 @@ import {
   resetDemo,
   setDemoActor,
   scopeAssistant,
-} from "../src/services";
+} from "./fixtures/testRepository";
 import { IDS } from "../shared/seed";
 import { uid } from "../shared/domain";
 beforeEach(() => resetDemo());

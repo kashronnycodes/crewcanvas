@@ -67,7 +67,7 @@ export function indicators(
   workerIds: string[],
   today = todayIn(),
 ) {
-  const visible = projects.filter((p) => workerIds.includes(p.workerId));
+  const visible = projects.filter((p) => p.workerId !== null && workerIds.includes(p.workerId));
   return {
     completed: new Set(
       visible.filter((p) => p.state === "accepted").map((p) => p.id),
@@ -123,7 +123,7 @@ export function execute(
   project: Project,
   input: Command,
   actor: SessionActor,
-  options: { demo?: boolean; now?: string } = {},
+  options: { now?: string } = {},
 ): Project {
   const command = commandSchema.parse(input);
   assertProjectAccess(actor, project);
@@ -164,6 +164,19 @@ export function execute(
   const log = (text: string) =>
     p.activity.push({ id: uid(), actorId: actor.id, text, createdAt: now });
   switch (command.type) {
+    case "assignTask": {
+      employer();
+      if (p.workerId === command.workerId) break;
+      if (p.activeAgreementId || p.deliveries.length || p.invoices.length || p.proposals.length || p.revisions.length) {
+        throw new DomainError("CONFLICT", "This task has agreed work or payment history. Keep its assignee and create a new task for different work.");
+      }
+      p.workerId = command.workerId;
+      // A changed assignee must review terms themselves; no acceptance transfers.
+      p.agreements = p.agreements.map(a => a.status === "proposed" ? { ...a, status: "draft" as const } : a);
+      if (p.organization) p.organization = { collectionId: p.organization.collectionId };
+      log(command.workerId ? "Changed the task assignee." : "Marked the task unassigned.");
+      break;
+    }
     case "proposeAgreement": {
       employer();
       if (
@@ -325,6 +338,7 @@ export function execute(
       p.revisions.push({
         id: uid(),
         text: command.text,
+        references: command.references ?? [],
         agreementId: a.id,
         createdAt: now,
         roundConsumed: false,
@@ -574,79 +588,7 @@ export function execute(
       log(`Comment: ${command.text}`);
       break;
     }
-    case "simulateInvoice": {
-      worker();
-      if (!options.demo) {
-        throw new DomainError(
-          "FORBIDDEN",
-          "Simulated invoices are available only in demo mode.",
-        );
-      }
-      const a = agreed();
-      if (p.state !== "accepted") {
-        throw new DomainError(
-          "CONFLICT",
-          "Accept the delivery before invoicing.",
-        );
-      }
-      const invoiced = p.invoices
-        .filter((i) => i.state !== "cancelled")
-        .reduce((sum, i) => sum + BigInt(i.amountMinor), 0n);
-      const remaining = BigInt(a.amountMinor) - invoiced;
-      if (remaining <= 0n) {
-        throw new DomainError(
-          "CONFLICT",
-          "All approved charges are already invoiced.",
-        );
-      }
-      const due = new Date(
-        p.deliveries.filter((d) => d.status === "accepted").at(-1)
-          ?.acceptedAt ?? now,
-      );
-      due.setUTCDate(due.getUTCDate() + a.paymentDays);
-      p.invoices.push({
-        id: uid(),
-        sellerConnectionId: "demo",
-        providerId: null,
-        number: `DEMO-${p.invoices.length + 1}`,
-        amountMinor: remaining.toString(),
-        paidMinor: "0",
-        pendingMinor: "0",
-        dueDate: todayIn("Asia/Manila", due),
-        state: "unpaid",
-        rawStatus: "SIMULATED",
-        recipientUrl: null,
-        source: "sample",
-        chargeIds: [a.id],
-        syncedAt: now,
-      });
-      log("Created a simulated invoice. No transaction occurred.");
-      break;
-    }
-    case "simulatePayment": {
-      if (!options.demo) {
-        throw new DomainError(
-          "FORBIDDEN",
-          "Simulated payments are available only in demo mode.",
-        );
-      }
-      const i = p.invoices.find((x) => x.id === command.invoiceId);
-      if (!i) throw new DomainError("NOT_FOUND", "Invoice not found.");
-      i.state = command.state;
-      i.pendingMinor = command.state === "pending"
-        ? (BigInt(i.amountMinor) - BigInt(i.paidMinor)).toString()
-        : "0";
-      i.paidMinor = command.state === "paid"
-        ? i.amountMinor
-        : command.state === "partial"
-        ? (BigInt(i.amountMinor) / 2n).toString()
-        : i.paidMinor;
-      i.syncedAt = now;
-      log(
-        `Simulated payment state: ${command.state}. No real payment occurred.`,
-      );
-      break;
-    }
+
   }
   p.version += 1;
   return p;

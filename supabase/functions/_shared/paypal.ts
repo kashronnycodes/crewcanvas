@@ -460,6 +460,7 @@ export async function processWebhookEvent(event: any) {
     );
   }
   const p = await loadProject(row.data.project_id);
+  if (!p.workerId) throw new HttpError(409, "UNASSIGNED", "An unassigned planning task cannot have a provider invoice.");
   await reconcileProject(p.id, {
     id: p.workerId,
     role: "worker",
