@@ -2,6 +2,8 @@
 
 CrewCanvas connects projects, roles, members, and tasks with files, revisions, AI, and PayPal Sandbox payments.
 
+Licensed under the [MIT License](LICENSE).
+
 Owners manage work in **Project Studio**. Regular members land on **My Tasks**, which contains only their assignments. **Project Whiteboard** holds task-scoped notes and drawings without a second set of task controls. Clicking a member shows their name and project role. The workspace menu contains invitations, settings, help, and sign-out. See [task and member navigation](docs/member-navigation.md).
 
 Every account signs in through Supabase and uses the same database, storage, AI, and permissions. `?demo=1` and old build-mode flags cannot enable a simulator. Old browser records are left untouched but are not used as app data. Theme and workspace preferences, authentication sessions, and unsaved board recovery drafts still use browser storage.
