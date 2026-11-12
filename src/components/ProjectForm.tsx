@@ -1,9 +1,15 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Sparkles, ArrowRight } from "lucide-react";
-import type { Agreement, BriefSuggestion, Person } from "../../shared/types";
+import { ArrowRight, Sparkles } from "lucide-react";
+import type {
+  Agreement,
+  BriefSuggestion,
+  Person,
+  WorkflowCollection,
+} from "../../shared/types";
+import { draftTaskCopy } from "../../shared/workflow";
 import { parseAmount, todayIn } from "../../shared/domain";
-import { termsSchema, type Command } from "../../shared/validation";
+import { type Command, termsSchema } from "../../shared/validation";
 import { mode, scopeAssistant } from "../services";
 import Modal from "./Modal";
 export default function ProjectForm({
@@ -13,6 +19,7 @@ export default function ProjectForm({
   current,
   onClose,
   onSubmit,
+  task,
 }: {
   people: Person[];
   workerId?: string;
@@ -20,26 +27,37 @@ export default function ProjectForm({
   current?: Agreement;
   onClose: () => void;
   onSubmit: (c: Command) => Promise<boolean>;
+  task?: {
+    collection: WorkflowCollection;
+    roleId: string;
+    memberId?: string;
+    draft?: ReturnType<typeof draftTaskCopy>;
+  };
 }) {
+  const [roleId, setRoleId] = useState(task?.roleId ?? "");
+  const [publishTask, setPublishTask] = useState(!task?.draft);
+  const defaults = current ?? task?.draft;
   const [suggestion, setSuggestion] = useState<BriefSuggestion | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [error, setError] = useState("");
   const form = useForm({
     defaultValues: {
-      workerId:
-        workerId ?? people.find((p) => p.accessRole === "worker")?.id ?? "",
-      title: "",
-      brief: current?.brief ?? "",
-      tasks: current?.tasks?.join("\n") ?? "",
-      deliverables: current?.deliverables.join("\n") ?? "",
-      amount: current
-        ? (Number(current.amountMinor) / 100).toFixed(2)
+      workerId: workerId ?? task?.memberId ?? task?.collection.roles.find((r) =>
+        r.id === roleId
+      )?.members[0] ?? people.find((p) => p.accessRole === "worker")?.id ?? "",
+      title: task?.draft?.title ?? "",
+      brief: defaults?.brief ?? "",
+      tasks: defaults?.tasks?.join("\n") ?? "",
+      deliverables: defaults?.deliverables.join("\n") ?? "",
+      amount: defaults
+        ? (Number(defaults.amountMinor) / 100).toFixed(2)
+        : task
+        ? "0.00"
         : "120.00",
-      deadline:
-        current?.deadline ??
+      deadline: defaults?.deadline ??
         todayIn("Asia/Manila", new Date(Date.now() + 7 * 86400000)),
-      revisionRounds: current?.revisionRounds ?? 2,
-      paymentDays: current?.paymentDays ?? 7,
+      revisionRounds: defaults?.revisionRounds ?? 2,
+      paymentDays: defaults?.paymentDays ?? 7,
     },
   });
   async function extract() {
@@ -60,14 +78,14 @@ export default function ProjectForm({
   return (
     <Modal
       wide
-      title={
-        projectId ? "Propose updated terms" : "Make something great together"
-      }
-      description={
-        projectId
-          ? "Accepted terms remain in effect until the worker accepts this version."
-          : "A clear brief is the beginning of great work. Your worker reviews and accepts these terms."
-      }
+      title={projectId
+        ? "Propose updated terms"
+        : task
+        ? task.draft ? "Duplicate as a new draft task" : "Add task"
+        : "Make something great together"}
+      description={projectId
+        ? "Accepted terms remain in effect until the worker accepts this version."
+        : "A clear brief is the beginning of great work. Your worker reviews and accepts these terms."}
       onClose={onClose}
     >
       <form
@@ -91,15 +109,18 @@ export default function ProjectForm({
               paymentDays: Number(value.paymentDays),
             });
             const ok = await onSubmit(
-              projectId
-                ? { type: "proposeAgreement", projectId, terms }
-                : {
-                    type: "createProject",
-                    workerId: value.workerId,
-                    title: value.title,
-                    terms,
-                    publish: true,
-                  },
+              projectId ? { type: "proposeAgreement", projectId, terms } : {
+                type: "createProject",
+                workerId: value.workerId,
+                title: value.title,
+                terms,
+                publish: task ? publishTask : true,
+                ...(task
+                  ? {
+                    organization: { collectionId: task.collection.id, roleId },
+                  }
+                  : {}),
+              },
             );
             if (ok) onClose();
           } catch (e) {
@@ -108,29 +129,60 @@ export default function ProjectForm({
         })}
       >
         {!projectId && (
-          <div className="field-grid">
-            <label>
-              Project name
-              <input
-                {...form.register("title", { required: true })}
-                placeholder="e.g. Launch teaser"
-                required
-                maxLength={120}
-              />
-            </label>
-            <label>
-              Assigned to
-              <select {...form.register("workerId")} required>
-                {people
-                  .filter((p) => p.accessRole === "worker")
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} · {p.role}
-                    </option>
+          <>
+            {task && (
+              <label>
+                Project<input value={task.collection.title} readOnly />
+              </label>
+            )}
+            {task && (
+              <label>
+                Project role<select
+                  value={roleId}
+                  onChange={(e) => {
+                    setRoleId(e.target.value);
+                    form.setValue(
+                      "workerId",
+                      task.collection.roles.find((r) => r.id === e.target.value)
+                        ?.members[0] ?? "",
+                    );
+                  }}
+                >
+                  {task.collection.roles.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
-              </select>
-            </label>
-          </div>
+                </select>
+              </label>
+            )}
+            <div className="field-grid">
+              <label>
+                {task ? "Task title" : "Project name"}
+                <input
+                  {...form.register("title", { required: true })}
+                  placeholder="e.g. Launch teaser"
+                  required
+                  maxLength={120}
+                />
+              </label>
+              <label>
+                Assigned to
+                <select {...form.register("workerId")} required>
+                  {people
+                    .filter((p) =>
+                      p.accessRole === "worker" &&
+                      (!task ||
+                        task.collection.roles.find((r) => r.id === roleId)
+                          ?.members.includes(p.id))
+                    )
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} · {p.role}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            </div>
+          </>
         )}
         <label>
           The brief
@@ -143,58 +195,68 @@ export default function ProjectForm({
             maxLength={20000}
           />
         </label>
-        <div className="ai-inline">
-          <span>
-            <Sparkles size={15} /> A little help getting started
-          </span>
-          <button
-            type="button"
-            className="button ai-button"
-            onClick={() => void extract()}
-            disabled={aiBusy}
-          >
-            {aiBusy ? "Reading your brief…" : "Suggest tasks & deliverables"}
-            <ArrowRight size={14} />
-          </button>
-        </div>
-        {suggestion && (
-          <div className="ai-result">
-            <span className="eyebrow">
-              {suggestion.mode === "demo"
-                ? "DETERMINISTIC DEMO RESPONSE"
-                : "AI SUGGESTIONS · REVIEW BEFORE USING"}
+        {task && (
+          <label>
+            Status<select
+              value={publishTask ? "proposed" : "draft"}
+              onChange={(e) => setPublishTask(e.target.value === "proposed")}
+            >
+              <option value="proposed">Awaiting agreement</option>
+              <option value="draft">Draft</option>
+            </select>
+          </label>
+        )}
+        <details open={!task} className="task-options">
+          <summary>{task ? "Optional planning & AI" : "Planning & AI"}</summary>
+          <div className="ai-inline">
+            <span>
+              <Sparkles size={15} /> A little help getting started
             </span>
-            <ul>
-              {suggestion.tasks.map((t, i) => (
-                <li key={i}>{t}</li>
-              ))}
-            </ul>
-            {suggestion.questions.map((q, i) => (
-              <p key={i}>{q}</p>
-            ))}
             <button
               type="button"
-              className="text-button"
-              onClick={() => {
-                form.setValue(
-                  "deliverables",
-                  suggestion.deliverables.join("\n"),
-                );
-                form.setValue("tasks", suggestion.tasks.join("\n"));
-              }}
+              className="button ai-button"
+              onClick={() => void extract()}
+              disabled={aiBusy}
             >
-              Use proposed tasks & deliverables →
+              {aiBusy ? "Reading your brief…" : "Suggest tasks & deliverables"}
+              <ArrowRight size={14} />
             </button>
           </div>
-        )}
-        <label>
-          Proposed tasks <small>Optional · one per line</small>
-          <textarea
-            {...form.register("tasks")}
-            rows={2}
-            placeholder="Plan the edit&#10;Prepare the final export"
-          />
-        </label>
+          {suggestion && (
+            <div className="ai-result">
+              <span className="eyebrow">
+                {suggestion.mode === "demo"
+                  ? "DETERMINISTIC DEMO RESPONSE"
+                  : "AI SUGGESTIONS · REVIEW BEFORE USING"}
+              </span>
+              <ul>
+                {suggestion.tasks.map((t, i) => <li key={i}>{t}</li>)}
+              </ul>
+              {suggestion.questions.map((q, i) => <p key={i}>{q}</p>)}
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  form.setValue(
+                    "deliverables",
+                    suggestion.deliverables.join("\n"),
+                  );
+                  form.setValue("tasks", suggestion.tasks.join("\n"));
+                }}
+              >
+                Use proposed tasks & deliverables →
+              </button>
+            </div>
+          )}
+          <label>
+            Proposed tasks <small>Optional · one per line</small>
+            <textarea
+              {...form.register("tasks")}
+              rows={2}
+              placeholder="Plan the edit&#10;Prepare the final export"
+            />
+          </label>
+        </details>
         <label>
           Deliverables <small>One per line · editable before proposing</small>
           <textarea
@@ -204,46 +266,61 @@ export default function ProjectForm({
             placeholder="One 30-second video, 1080p\nOne final MP4 export"
           />
         </label>
-        <div className="field-grid">
+        {task && (
           <label>
-            Agreed price <small>USD</small>
-            <div className="money-input">
-              <span>$</span>
-              <input
-                {...form.register("amount")}
-                inputMode="decimal"
-                required
-                pattern="[0-9]+(\.[0-9]{1,2})?"
-              />
-            </div>
-          </label>
-          <label>
-            Delivery deadline
-            <input type="date" {...form.register("deadline")} required />
-          </label>
-          <label>
-            Included revision rounds
-            <input
-              type="number"
-              min="0"
-              max="99"
-              {...form.register("revisionRounds")}
+            Delivery deadline<input
+              type="date"
+              {...form.register("deadline")}
               required
             />
           </label>
-          <label>
-            Payment due after acceptance
-            <select {...form.register("paymentDays")}>
-              <option value="0">On acceptance</option>
-              <option value="7">7 calendar days</option>
-              <option value="14">14 calendar days</option>
-              <option value="30">30 calendar days</option>
-            </select>
-          </label>
-        </div>
+        )}
+        <details open={!task} className="task-options">
+          <summary>
+            Agreement options · price, included revisions & payment terms
+          </summary>
+          <div className="field-grid">
+            <label>
+              Agreed price <small>USD</small>
+              <div className="money-input">
+                <span>$</span>
+                <input
+                  {...form.register("amount")}
+                  inputMode="decimal"
+                  required
+                  pattern="[0-9]+(\.[0-9]{1,2})?"
+                />
+              </div>
+            </label>
+            {!task && (
+              <label>
+                Delivery deadline
+                <input type="date" {...form.register("deadline")} required />
+              </label>
+            )}
+            <label>
+              Included revision rounds
+              <input
+                type="number"
+                min="0"
+                max="99"
+                {...form.register("revisionRounds")}
+                required
+              />
+            </label>
+            <label>
+              Payment due after acceptance
+              <select {...form.register("paymentDays")}>
+                <option value="0">On acceptance</option>
+                <option value="7">7 calendar days</option>
+                <option value="14">14 calendar days</option>
+                <option value="30">30 calendar days</option>
+              </select>
+            </label>
+          </div>
+        </details>
         <div className="info-note">
-          People approve the scope, price, and deadline.{" "}
-          {mode === "demo"
+          People approve the scope, price, and deadline. {mode === "demo"
             ? "This is a local demo; AI and payment interactions are simulated."
             : "This project uses sandbox payments only when its worker has a connected seller."}
         </div>
@@ -260,7 +337,11 @@ export default function ProjectForm({
             className="button primary"
             disabled={form.formState.isSubmitting}
           >
-            Propose agreement
+            {task
+              ? !publishTask
+                ? "Create draft task"
+                : "Create task & propose terms"
+              : "Propose agreement"}
             <ArrowRight size={15} />
           </button>
         </div>

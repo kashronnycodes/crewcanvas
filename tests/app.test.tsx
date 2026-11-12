@@ -13,6 +13,7 @@ vi.mock("../src/components/Canvas", () => ({
   default: () => <div>Canvas under test</div>,
   StatusBadges: () => null,
 }));
+vi.mock("../src/components/WorkflowCanvas", () => ({ default: () => <div>Studio under test</div> }));
 beforeEach(() => {
   resetDemo();
   Object.defineProperty(window, "matchMedia", {

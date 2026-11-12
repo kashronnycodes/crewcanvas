@@ -1,0 +1,40 @@
+
+> crewcanvas@1.0.0 test:e2e
+> playwright test e2e/workflow-studio.spec.ts --workers=3
+
+[WebServer] (node:10628) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:48092) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:26528) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 9 tests using 3 workers
+
+(node:2396) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:47952) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:38168) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 [chromium] › e2e\workflow-studio.spec.ts:240:1 › previews deliveries, records multiple revisions and negotiates a client fee without changing payments (4.3s)
+  ok 3 [chromium] › e2e\workflow-studio.spec.ts:56:1 › organizes a project, three roles and two members; tasks and custom roles survive refresh (4.8s)
+(node:28148) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:53460) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 4 [Mobile Chrome] › e2e\workflow-studio.spec.ts:56:1 › organizes a project, three roles and two members; tasks and custom roles survive refresh (4.2s)
+  ok 2 [chromium] › e2e\workflow-studio.spec.ts:90:1 › saved whiteboard edits, shortcuts, shapes, drawing, links and dark inputs work (9.8s)
+(node:13656) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 6 [Mobile Chrome] › e2e\workflow-studio.spec.ts:240:1 › previews deliveries, records multiple revisions and negotiates a client fee without changing payments (3.2s)
+(node:34800) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 5 [Mobile Chrome] › e2e\workflow-studio.spec.ts:90:1 › saved whiteboard edits, shortcuts, shapes, drawing, links and dark inputs work (13.0s)
+(node:46880) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 7 [Mobile Safari] › e2e\workflow-studio.spec.ts:56:1 › organizes a project, three roles and two members; tasks and custom roles survive refresh (11.7s)
+  ok 9 [Mobile Safari] › e2e\workflow-studio.spec.ts:240:1 › previews deliveries, records multiple revisions and negotiates a client fee without changing payments (8.1s)
+  ok 8 [Mobile Safari] › e2e\workflow-studio.spec.ts:90:1 › saved whiteboard edits, shortcuts, shapes, drawing, links and dark inputs work (25.0s)
+
+  9 passed (43.6s)

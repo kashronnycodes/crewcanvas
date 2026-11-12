@@ -38,6 +38,10 @@ export const boardDataSchema = z.object({
   fileId: z.uuid().nullable(),
   source: z.uuid().nullable(),
   target: z.uuid().nullable(),
+  locked: z.boolean().optional(),
+  groupId: z.uuid().nullable().optional(),
+  fileVersion: z.number().int().min(0).nullable().optional(),
+  taskId: z.uuid().nullable().optional(),
 }).strict();
 export type BoardData = z.infer<typeof boardDataSchema>;
 export interface BoardObject {

@@ -143,7 +143,7 @@ export function canvasEntities(s: WorkspaceSnapshot) {
     entities.set(p.id, { kind: "person", personId: p.id });
   }
   for (const p of s.projects) {
-    for (const kind of ["project", "task", "payment"]) {
+    for (const kind of ["project", "task", "payment", "submission"]) {
       entities.set(`${kind}:${p.id}`, {
         kind,
         projectId: p.id,
@@ -179,6 +179,9 @@ export function connectionMeaning(
   if (pair === "person:task" && a.personId === b.personId) {
     return "Assigned freelancer";
   }
+  if (pair === "person:project" && a.personId === b.personId) {
+    return "Freelancer agreement";
+  }
   if (pair === "project:person" && a.personId === b.personId) {
     return "Project freelancer";
   }
@@ -187,6 +190,15 @@ export function connectionMeaning(
     return "Approved work and invoice";
   }
   if (sameProject && pair === "task:delivery") return "Submitted deliverable";
+  if (sameProject && pair === "task:submission") {
+    return "Awaiting submitted work";
+  }
+  if (
+    sameProject && ["delivery:payment", "submission:payment"].includes(pair)
+  ) return "Verified payment status";
+  if (sameProject && pair === "delivery:revision") {
+    return "Revision requested for submitted work";
+  }
   if (sameProject && pair === "task:revision") return "Revision requested";
   if (sameProject && pair === "revision:delivery") return "Revision feedback";
   if (
@@ -202,6 +214,23 @@ export function connectionMeaning(
   return null;
 }
 export function validateCanvas(s: WorkspaceSnapshot, layout: CanvasLayout) {
+  const collectionIds = new Set<string>();
+  for (const collection of layout.workflow ?? []) {
+    if (collectionIds.has(collection.id)) throw new Error("Duplicate project.");
+    collectionIds.add(collection.id);
+    const roles = new Set<string>();
+    for (const role of collection.roles) {
+      if (
+        roles.has(role.id) || new Set(role.members).size !== role.members.length
+      ) throw new Error("Duplicate role or member.");
+      roles.add(role.id);
+      if (
+        role.members.some((id) =>
+          !s.people.some((p) => p.id === id && p.accessRole === "worker")
+        )
+      ) throw new Error("Choose an existing workspace freelancer.");
+    }
+  }
   const entities = canvasEntities(s);
   if (layout.cards?.some((c) => !entities.has(c.id))) {
     throw new Error("Canvas card is outside this workspace.");

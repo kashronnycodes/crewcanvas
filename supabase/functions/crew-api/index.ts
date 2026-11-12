@@ -38,6 +38,10 @@ import {
 import { validateCanvas } from "../../../shared/workspace.ts";
 import { workspaceCommand } from "../_shared/workspace-ai.ts";
 import { checked, onboarding, tokenHash } from "../_shared/onboarding.ts";
+import {
+  enforceRateLimit,
+  enforceRequestLimit,
+} from "../_shared/rate-limit.ts";
 const idBody = z.object({ projectId: z.uuid() }).strict();
 export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return respond(req, {});
@@ -52,6 +56,7 @@ export async function handler(req: Request): Promise<Response> {
     }
     const path = new URL(req.url).pathname.split("/crew-api/")[1] ?? "";
     const identity = await authenticatedUser(req);
+    await enforceRequestLimit(identity.id, path, req.method);
     const setup = await onboarding(req, path, identity);
     if (setup) return setup;
     const user = await actor(req, identity);
@@ -195,12 +200,30 @@ export async function handler(req: Request): Promise<Response> {
           );
         }
         const a = makeAgreement(command.terms, user.id, null);
+        if (command.organization) {
+          const layout = await admin().from("canvas_layouts").select("data").eq(
+            "workspace_id",
+            user.workspaceId,
+          ).single();
+          const role = (layout.data?.data?.workflow as
+            | import("../../../shared/types.ts").WorkflowCollection[]
+            | undefined)?.find((c) =>
+              c.id === command.organization!.collectionId
+            )?.roles.find((r) => r.id === command.organization!.roleId);
+          if (layout.error || !role?.members.includes(command.workerId)) {
+            throw new DomainError(
+              "FORBIDDEN",
+              "Assign a member of this project role.",
+            );
+          }
+        }
         a.status = command.publish ? "proposed" : "draft";
         const p: Project = {
           id: uid(),
           workspaceId: user.workspaceId,
           workerId: command.workerId,
           title: command.title,
+          organization: command.organization,
           state: "awaiting_agreement",
           origin: "sandbox",
           activeAgreementId: null,
@@ -284,10 +307,16 @@ export async function handler(req: Request): Promise<Response> {
     if (path === "payments/issue") {
       const { projectId } = idBody.parse(input);
       const requestId = z.uuid().parse(req.headers.get("Idempotency-Key"));
+      await enforceRateLimit(identity.id, ["payment_issue_project"], projectId);
       return respond(req, await issueInvoice(projectId, user, requestId));
     }
     if (path === "payments/reconcile") {
       const { projectId } = idBody.parse(input);
+      await enforceRateLimit(
+        identity.id,
+        ["payment_reconcile_project"],
+        projectId,
+      );
       await reconcileProject(projectId, user);
       return respond(req, { ok: true });
     }

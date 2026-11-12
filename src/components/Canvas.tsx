@@ -2,11 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
-  Handle,
+  ConnectionMode,
   type Node,
   type NodeChange,
   type NodeProps,
-  Position,
   ReactFlow,
   ReactFlowProvider,
   useNodesInitialized,
@@ -36,6 +35,9 @@ import type {
 } from "../../shared/types";
 import { indicators, reparent, todayIn, uid } from "../../shared/domain";
 import Avatar from "./Avatar";
+import { FourWayHandles, smartEdgeTypes } from "./SmartEdge";
+import type { ProjectTab } from "../../shared/freelance-canvas";
+import type { Command } from "../../shared/validation";
 import {
   useWorkspaceCanvas,
   WorkCard,
@@ -111,8 +113,7 @@ function PersonNode({ data }: NodeProps<MapNode>) {
   const own = data.projects.filter((x) => x.workerId === p.id);
   return (
     <div className={`person-node ${lead ? "lead-node" : ""}`}>
-      <Handle type="target" position={Position.Top} />
-      <Handle type="source" position={Position.Bottom} />
+      <FourWayHandles />
       <button
         className="person-open"
         title="Click to view projects · drag to rearrange"
@@ -136,6 +137,10 @@ function PersonNode({ data }: NodeProps<MapNode>) {
               ? "Review ready"
               : own.some((x) => x.state === "accepted")
               ? "Work accepted"
+              : own.length === 0
+              ? "No projects"
+              : own.every((p) => p.state === "awaiting_agreement")
+              ? "Awaiting agreement"
               : "In progress"}
           </span>
           <StatusBadges
@@ -161,8 +166,7 @@ function PersonNode({ data }: NodeProps<MapNode>) {
 function GroupNode({ data }: NodeProps<MapNode>) {
   return (
     <div className={`group-node ${data.collapsed ? "collapsed" : "expanded"}`}>
-      <Handle type="target" position={Position.Top} />
-      <Handle type="source" position={Position.Bottom} />
+      <FourWayHandles />
       <div className="group-heading">
         <span className="group-symbol">
           <Users size={15} />
@@ -224,9 +228,18 @@ function Map({
   onNotify,
   onInvite,
   selectedPersonId,
+  onCommand,
+  busy,
 }: {
   snapshot: WorkspaceSnapshot;
-  onSelect: (id: string, filter?: Filter, projectId?: string) => void;
+  onSelect: (
+    id: string,
+    filter?: Filter,
+    projectId?: string,
+    tab?: ProjectTab,
+  ) => void;
+  onCommand: (command: Command) => Promise<boolean>;
+  busy: boolean;
   onSave: (layout: CanvasLayout) => Promise<CanvasLayout>;
   saveStatus: string;
   search: string;
@@ -270,13 +283,20 @@ function Map({
     flow,
     onSelect,
     onNotify,
+    onCommand,
+    busy,
   });
   useEffect(() => {
     if (!initialized || initialViewSet.current) return;
     initialViewSet.current = true;
     void flow.fitView({
       nodes: [
+        ...snapshot.people.filter((p) => p.accessRole === "worker").map(
+          (p) => ({ id: p.id }),
+        ),
+        { id: `project:${snapshot.projects[0]?.id}` },
         { id: `task:${snapshot.projects[0]?.id}` },
+        { id: `submission:${snapshot.projects[0]?.id}` },
         { id: `payment:${snapshot.projects[0]?.id}` },
         ...(snapshot.projects[0]?.deliveries.map((d) => ({
           id: `delivery:${d.id}`,
@@ -287,7 +307,9 @@ function Map({
     });
   }, [initialized, flow, snapshot.projects]);
   const nodes: MapNode[] = useMemo(() => {
-    const groups: MapNode[] = layout.groups.map((g) => ({
+    const groups: MapNode[] = (workspace.detailed ? layout.groups : []).map((
+      g,
+    ) => ({
       id: g.id,
       type: "group",
       position: { x: g.x, y: g.y },
@@ -324,15 +346,22 @@ function Map({
     const persons: MapNode[] = layout.people.flatMap((position) => {
       const person = snapshot.people.find((p) => p.id === position.id);
       if (!person) return [];
-      const hidden = !!position.groupId &&
+      if (!workspace.detailed && person.accessRole === "employer") return [];
+      const group = layout.groups.find((g) => g.id === position.groupId);
+      const hidden = workspace.detailed && !!position.groupId &&
         !!layout.groups.find((g) => g.id === position.groupId)?.collapsed;
       return [
         {
           id: person.id,
           selected: person.id === selectedPersonId,
           type: "person",
-          parentId: position.groupId ?? undefined,
-          position: { x: position.x, y: position.y },
+          parentId: workspace.detailed
+            ? position.groupId ?? undefined
+            : undefined,
+          position: {
+            x: position.x + (!workspace.detailed ? group?.x ?? 0 : 0),
+            y: position.y + (!workspace.detailed ? group?.y ?? 0 : 0),
+          },
           hidden,
           style: {
             width: 170,
@@ -383,8 +412,10 @@ function Map({
     today,
     selectedPersonId,
     workspace.workNodes,
+    workspace.detailed,
   ]);
   const edges = useMemo(() => {
+    if (!workspace.detailed) return [];
     const employer = snapshot.people.find((p) => p.accessRole === "employer")!;
     return [
       ...layout.groups.map((g) => ({
@@ -407,7 +438,14 @@ function Map({
       zIndex: 0,
       style: { stroke: "var(--line, #555c59)", strokeWidth: 1.2 },
     }));
-  }, [layout, snapshot.people]);
+  }, [layout, snapshot.people, workspace.detailed]);
+  function personPosition(id: string, position: { x: number; y: number }) {
+    const person = layout.people.find((p) => p.id === id),
+      group = layout.groups.find((g) => g.id === person?.groupId);
+    return !workspace.detailed && group
+      ? { x: position.x - group.x, y: position.y - group.y }
+      : position;
+  }
   function changed(changes: NodeChange<MapNode>[]) {
     setLayout((current) => {
       let next = current;
@@ -417,7 +455,9 @@ function Map({
           next = {
             ...next,
             people: next.people.map((p) =>
-              p.id === change.id ? { ...p, x, y } : p
+              p.id === change.id
+                ? { ...p, ...personPosition(p.id, { x, y }) }
+                : p
             ),
             groups: next.groups.map((g) =>
               g.id === change.id ? { ...g, x, y } : g
@@ -483,7 +523,9 @@ function Map({
   );
   return (
     <div
-      className="canvas-container"
+      className={`canvas-container ${
+        workspace.detailed ? "" : "simple-work-map"
+      }`}
       ref={workspace.container}
       onDrop={workspace.drop}
       onDragOver={workspace.dragOver}
@@ -510,6 +552,8 @@ function Map({
         )}
         edges={[...edges, ...workspace.workEdges]}
         nodeTypes={nodeTypes}
+        edgeTypes={smartEdgeTypes}
+        connectionMode={ConnectionMode.Loose}
         onNodesChange={changed}
         onConnect={workspace.connect}
         onNodeClick={(event, node) => workspace.inspect(node.id, event)}
@@ -519,7 +563,9 @@ function Map({
           const next = {
             ...layout,
             people: layout.people.map((p) =>
-              p.id === node.id ? { ...p, ...node.position } : p
+              p.id === node.id
+                ? { ...p, ...personPosition(p.id, node.position) }
+                : p
             ),
             groups: layout.groups.map((g) =>
               g.id === node.id ? { ...g, ...node.position } : g
@@ -579,8 +625,10 @@ function Map({
         <span className="tool-divider" />
         <button
           title="Add person or group"
-          aria-label="Add person or group"
-          onClick={() => setAddOpen(!addOpen)}
+          aria-label={workspace.detailed
+            ? "Add person or group"
+            : "Add freelancer"}
+          onClick={() => workspace.detailed ? setAddOpen(!addOpen) : onInvite()}
         >
           <Plus size={21} />
         </button>

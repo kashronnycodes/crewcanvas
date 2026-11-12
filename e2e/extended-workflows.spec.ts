@@ -99,7 +99,7 @@ test("employer requests a revision and freelancer responds; request persists aft
   await openProjects(page);
   await page.getByRole("button", { name: "Event recap", exact: true }).click();
   await page.getByRole("tab", { name: "Deliverables" }).click();
-  await page.getByRole("button", { name: "Request changes" }).click();
+  await page.getByRole("button", { name: "Request Revision" }).click();
 
   const feedback = "Please adjust the opening title card.";
   await page.getByLabel("Your feedback").fill(feedback);
@@ -189,6 +189,7 @@ test("replaced workspace files retain version history after refresh", async ({ p
     label: "Myron · Employer",
   });
   await page.getByRole("button", { name: "Work map", exact: true }).click();
+  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
   await page.getByRole("button", { name: "Fit to screen" }).click();
   const fileCard = page.locator(".react-flow__node-work").filter({
     hasText: fileName,
@@ -215,6 +216,7 @@ test("replaced workspace files retain version history after refresh", async ({ p
 
   await page.reload();
   await page.getByRole("button", { name: "Work map", exact: true }).click();
+  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
   await page.getByRole("button", { name: "Fit to screen" }).click();
   await page.locator(".react-flow__node-work").filter({ hasText: fileName })
     .getByRole("button", { name: fileName, exact: true })
@@ -263,7 +265,7 @@ test("freelancer proposes extra work and employer accepts it", async ({ page }) 
   await openProjects(page);
   await page.getByRole("button", { name: "Event recap", exact: true }).click();
   await page.getByRole("tab", { name: "Deliverables" }).click();
-  await page.getByRole("button", { name: "Request changes" }).click();
+  await page.getByRole("button", { name: "Request Revision" }).click();
   await page.getByLabel("Your feedback").fill(
     "Please add an alternate ending to the event recap.",
   );
@@ -276,7 +278,7 @@ test("freelancer proposes extra work and employer accepts it", async ({ page }) 
   await openProjects(page);
   await page.getByRole("button", { name: "Event recap", exact: true }).click();
   await page.getByRole("tab", { name: "Revisions" }).click();
-  await page.getByRole("button", { name: /Propose additional work/ }).click();
+  await page.getByRole("button", { name: /Propose revision fee/ }).click();
   await page.getByLabel("Additional price · USD").fill("25.00");
   await page.getByRole("button", { name: "Send proposal" }).click();
   await expect(page.getByText("+ $25.00")).toBeVisible();
@@ -288,7 +290,7 @@ test("freelancer proposes extra work and employer accepts it", async ({ page }) 
   await openProjects(page);
   await page.getByRole("button", { name: "Event recap", exact: true }).click();
   await page.getByRole("tab", { name: "Revisions" }).click();
-  await page.getByRole("button", { name: "Accept proposal" }).click();
+  await page.getByRole("button", { name: "Approve revision fee" }).click();
   await expect(
     page.getByRole("tabpanel", { name: "Revisions" }).getByText(
       "accepted",
@@ -329,6 +331,8 @@ test("workspace canvas group movement persists after refresh", async ({ page }) 
     "The workspace canvas is replaced by the project list on mobile.",
   );
   await page.goto("/");
+  await page.getByRole("button", { name: "Work map", exact: true }).click();
+  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
 
   const group = page.locator(".react-flow__node-group").filter({
     hasText: "Hackathon Game Winners",
@@ -384,12 +388,110 @@ test("workspace canvas group movement persists after refresh", async ({ page }) 
   expect(restored).toEqual(after);
 });
 
+test("workspace canvas pan mode moves the viewport and select mode can be restored", async ({ page }, testInfo) => {
+  const mobile = testInfo.project.name.startsWith("Mobile");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Work map", exact: true }).click();
+  await page.getByRole("button", { name: "Details & tools", exact: true })
+    .click();
+
+  const panTool = page.getByLabel("Pan tool", { exact: true });
+  const selectTool = page.getByLabel("Select tool", { exact: true });
+  const viewport = page.locator(".react-flow__viewport");
+  await expect(page.locator(".react-flow__node").first()).toBeVisible();
+  await page.getByLabel("Fit to screen").click();
+  await panTool.click();
+  await expect(panTool).toHaveClass(/active/);
+  await expect(selectTool).not.toHaveClass(/active/);
+
+  const transformBefore = await viewport.getAttribute("style");
+  const before = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("crewcanvas.demo.v1") ?? "{}").layout
+      .viewport
+  );
+  const start = await page.locator(".react-flow__pane").evaluate((pane) => {
+    const rect = pane.getBoundingClientRect();
+    for (let y = rect.top + 20; y < rect.bottom - 20; y += 20) {
+      for (let x = rect.left + 20; x < rect.right - 20; x += 20) {
+        const target = document.elementFromPoint(x, y);
+        if (
+          target && pane.contains(target) &&
+          !target.closest(
+            ".react-flow__node, .canvas-tools, .zoom-tools, .map-display-toggle",
+          )
+        ) return { x, y };
+      }
+    }
+    throw new Error("No unobstructed workspace canvas point is visible.");
+  });
+  const end = { x: start.x + 100, y: start.y + 60 };
+  if (mobile) {
+    await page.evaluate(({ start, end }) => {
+      const pane = document.querySelector(".react-flow__pane");
+      if (!pane) throw new Error("The workspace canvas pane is unavailable.");
+      const makeTouch = (x: number, y: number) =>
+        ({
+          identifier: 1,
+          target: pane,
+          clientX: x,
+          clientY: y,
+          screenX: x,
+          screenY: y,
+        });
+      const dispatch = (
+        type: string,
+        touch: ReturnType<typeof makeTouch>,
+        active: ReturnType<typeof makeTouch>[],
+      ) => {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperties(event, {
+          touches: { value: active },
+          targetTouches: { value: active },
+          changedTouches: { value: [touch] },
+        });
+        pane.dispatchEvent(event);
+      };
+      const first = makeTouch(start.x, start.y);
+      dispatch("touchstart", first, [first]);
+      let last = first;
+      for (let step = 1; step <= 8; step++) {
+        last = makeTouch(
+          start.x + (end.x - start.x) * step / 8,
+          start.y + (end.y - start.y) * step / 8,
+        );
+        dispatch("touchmove", last, [last]);
+      }
+      dispatch("touchend", last, []);
+    }, { start, end });
+  } else {
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 8 });
+    await page.mouse.up();
+  }
+
+  await expect.poll(() => viewport.getAttribute("style"))
+    .not.toBe(transformBefore);
+  await expect.poll(() =>
+    page.evaluate(() =>
+      JSON.parse(localStorage.getItem("crewcanvas.demo.v1") ?? "{}").layout
+        .viewport
+    )
+  ).not.toEqual(before);
+
+  await selectTool.click();
+  await expect(selectTool).toHaveClass(/active/);
+  await expect(panTool).not.toHaveClass(/active/);
+});
+
 test("collapsed workspace canvas groups persist after refresh", async ({ page }) => {
   test.skip(
     test.info().project.name.startsWith("Mobile"),
     "Canvas group controls are desktop-only; mobile gets a separate responsive check.",
   );
   await page.goto("/");
+  await page.getByRole("button", { name: "Work map", exact: true }).click();
+  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
   const collapseButton = page.getByRole("button", { name: /^Collapse / }).first();
   const expandedName = await collapseButton.getAttribute("aria-label");
   expect(expandedName).toBeTruthy();
@@ -410,6 +512,8 @@ test("collapsed workspace canvas groups persist after refresh", async ({ page })
   await expect(page.getByText("All changes saved")).toBeVisible();
 
   await page.reload();
+  await page.getByRole("button", { name: "Work map", exact: true }).click();
+  await page.getByRole("button", { name: "Details & tools", exact: true }).click();
   await expect(page.getByRole("button", { name: collapsedName })).toBeVisible();
 });
 

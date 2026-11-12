@@ -63,6 +63,14 @@ export const driveUrlSchema = z.url().refine((value) => {
     return false;
   }
 }, "Use an HTTPS Google Drive or Google Docs link.");
+export const deliverableUrlSchema = z.url().max(2000).refine((value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}, "Use an HTTPS deliverable link without embedded credentials.");
 export const commandSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -71,6 +79,8 @@ export const commandSchema = z.discriminatedUnion("type", [
       title: z.string().trim().min(2).max(120),
       terms: termsSchema,
       publish: z.boolean().default(true),
+      organization: z.object({ collectionId: id, roleId: id }).strict()
+        .optional(),
     })
     .strict(),
   z
@@ -92,7 +102,7 @@ export const commandSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("submitDelivery"),
       projectId: id,
-      url: driveUrlSchema,
+      url: deliverableUrlSchema,
       label: z.string().trim().min(1).max(80),
       note: z.string().max(3000),
     })
@@ -120,6 +130,9 @@ export const commandSchema = z.discriminatedUnion("type", [
       projectId: id,
       text: z.string().min(3).max(10000),
       items: z.array(scopeItemSchema).min(1).max(20),
+      deliveryId: id.optional(),
+      dueDate: dateSchema.nullable().optional(),
+      requestedFeeMinor: minorSchema.nullable().optional(),
     })
     .strict(),
   z
@@ -154,6 +167,14 @@ export const commandSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("counterProposal"),
+      projectId: id,
+      proposalId: id,
+      amountMinor: minorSchema,
+      deadline: dateSchema.nullable(),
+    }).strict(),
+  z
+    .object({
       type: z.literal("rebaseProposal"),
       projectId: id,
       proposalId: id,
@@ -180,6 +201,19 @@ export type Command = z.infer<typeof commandSchema>;
 export const layoutSchema = z
   .object({
     schemaVersion: z.literal(1),
+    workflow: z.array(
+      z.object({
+        id,
+        title: z.string().trim().min(2).max(120),
+        roles: z.array(
+          z.object({
+            id,
+            name: z.string().trim().min(1).max(60),
+            members: z.array(id).max(200),
+          }).strict(),
+        ).max(30),
+      }).strict(),
+    ).max(30).optional(),
     version: z.number().int().min(0),
     groups: z
       .array(

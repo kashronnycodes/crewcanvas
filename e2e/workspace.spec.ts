@@ -4,6 +4,44 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
+test("primary navigation and the about dialog return to the expected view", async ({ page }, testInfo) => {
+  await expect(
+    page.getByRole("region", { name: "Project collaboration studio" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Revisions", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Revisions, in one place." }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Work map", exact: true }).click();
+  await expect(page.getByLabel("Pan tool", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await expect(page.locator(".people-list")).toBeVisible();
+
+  await page.getByRole("button", { name: "Project whiteboard" }).click();
+  await expect(
+    page.getByLabel("Project collaboration whiteboard"),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Project studio", exact: true })
+    .click();
+  await expect(
+    page.getByRole("region", { name: "Project collaboration studio" }),
+  ).toBeVisible();
+
+  if (!testInfo.project.name.startsWith("Mobile")) {
+    await page.getByRole("button", { name: "About CrewCanvas" }).click();
+    const about = page.getByRole("dialog", {
+      name: "A clearer picture of your creative team",
+    });
+    await expect(about).toBeVisible();
+    await about.getByRole("button", { name: "Back to the canvas" }).click();
+    await expect(about).toHaveCount(0);
+  }
+});
+
 test("shows workers only their assigned projects", async ({ page }) => {
   await page.getByLabel("Demo viewing role").selectOption({
     label: "Jacob · Worker",
@@ -81,7 +119,7 @@ test("completes agreement, delivery review, and persists the accepted result", a
   await page.getByRole("button", { name: "Projects", exact: true }).click();
   await page.getByRole("button", { name: projectName, exact: true }).click();
   await page.getByRole("tab", { name: "Deliverables" }).click();
-  await page.getByRole("button", { name: "Accept delivery" }).click();
+  await page.getByRole("button", { name: "Approve Work" }).click();
   await expect(page.getByText("Work accepted", { exact: true })).toBeVisible();
 
   await page.reload();

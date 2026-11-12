@@ -1,4 +1,7 @@
 import type { WorkspaceFile, WorkspaceSnapshot } from "../shared/types";
+import { DEMO_FILE_ID, DEMO_FILE_PATH, DEMO_FILE_TEXT } from "../shared/publicDemo";
+import { publicDemo } from "./demoSession";
+import { responseError } from "../shared/http-errors";
 import { MAX_FILE_BYTES, validateFile } from "../shared/workspace";
 import {
   api,
@@ -191,7 +194,7 @@ export const files = {
         try {
           const result = JSON.parse(xhr.responseText);
           if (xhr.status < 200 || xhr.status >= 300) {
-            throw new Error(result.error?.message ?? "Upload failed.");
+            throw responseError(xhr.status, xhr.getResponseHeader("Retry-After"), result);
           }
           onProgress(100);
           resolve(result);
@@ -288,6 +291,10 @@ export const files = {
       ? file?.versions.at(-1)
       : file?.versions[version];
     if (!entry) throw new Error("File is no longer available to your account.");
+    // This immutable synthetic fixture works offline and uses the same access-filtered file lookup.
+    if (publicDemo && fileId === DEMO_FILE_ID && entry.path === DEMO_FILE_PATH) {
+      return URL.createObjectURL(new Blob([DEMO_FILE_TEXT], { type: "text/plain" }));
+    }
     const stored = await binary((store) => store.get(entry.path)) as
       | Blob
       | ArrayBuffer

@@ -268,3 +268,10 @@ model call, or a completed PayPal sandbox payment.
 - [PayPal partner dependency](https://developer.paypal.com/platforms/invoicing/integrate)
 - [Invoice event semantics](https://developer.paypal.com/platforms/invoicing/reference/invoicing-webhooks/)
 - [Webhook signature verification](https://developer.paypal.com/api/rest/webhooks/rest/)
+# Public demo accounts
+
+The sign-in page offers three one-click simulated demo accounts. See [setup, isolation and deployment instructions](docs/public-demo-accounts.md) and [verification results](docs/public-demo-verification.md).
+
+## API rate limiting
+
+See [rate-limit policies, migration and deployment instructions](docs/api-rate-limiting.md) and [verification results](docs/api-rate-limiting-verification.md).

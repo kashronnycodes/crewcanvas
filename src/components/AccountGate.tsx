@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import type { Person } from "../../shared/types";
+import DemoAccounts from "./DemoAccounts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -212,7 +213,7 @@ export default function AccountGate(
                       />
                     </label>
                     <button className="button primary" disabled={busy}>
-                      {signup ? "Create account" : "Sign in"}
+                      {busy ? "Signing in…" : signup ? "Create account" : "Sign in"}
                     </button>
                     {registration && (
                       <button
@@ -238,6 +239,7 @@ export default function AccountGate(
                     )}
                   </form>
                 )}
+              {!signup && <DemoAccounts />}
             </>
           )
           : (

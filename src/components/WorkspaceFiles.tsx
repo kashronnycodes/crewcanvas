@@ -40,7 +40,18 @@ export function FilePreview(
     };
   }, [file.id, entry?.path, version]);
   if (error) {
-    return <span className="file-preview-error" role="alert">{error}</span>;
+    return (
+      <span className="file-preview-error" role="alert">
+        {error}
+        <button
+          className="button secondary"
+          onClick={() =>
+            void openFile(file.id, version).catch((e) => setError(e.message))}
+        >
+          Open original file
+        </button>
+      </span>
+    );
   }
   if (!url) {
     return (
@@ -51,11 +62,26 @@ export function FilePreview(
   }
   const mime = entry?.mime ?? file.mime;
   if (mime.startsWith("image/")) {
-    return <img src={url} alt={file.name} loading="lazy" />;
+    return (
+      <img
+        src={url}
+        alt={file.name}
+        loading="lazy"
+        onError={() =>
+          setError("Image preview unavailable. Open the original file.")}
+      />
+    );
   }
   if (mime.startsWith("video/")) {
     return (
-      <video src={url} controls preload="metadata" className="nodrag nowheel" />
+      <video
+        src={url}
+        controls
+        preload="metadata"
+        className="nodrag nowheel"
+        onError={() =>
+          setError("Video preview unavailable. Open the original file.")}
+      />
     );
   }
   if (mime.startsWith("audio/")) {

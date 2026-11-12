@@ -1,0 +1,12 @@
+
+> crewcanvas@1.0.0 test
+> vitest run --maxWorkers=2
+
+
+ RUN  v4.1.12 C:/Users/ronro/Documents/ChatGPT/PAYPAL API HACKATHON/crewcanvas-release
+
+
+ Test Files  28 passed (28)
+      Tests  176 passed (176)
+   Start at  01:27:45
+   Duration  19.64s (transform 2.03s, setup 0ms, import 7.25s, tests 10.91s, environment 15.01s)
